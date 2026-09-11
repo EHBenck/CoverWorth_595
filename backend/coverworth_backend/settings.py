@@ -37,9 +37,15 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
+    "rest_framework"
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -54,7 +60,7 @@ ROOT_URLCONF = "coverworth_backend.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR.parent / 'frontend'],
+        "DIRS": [BASE_DIR.parent / 'frontend' / 'dist'],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -64,6 +70,12 @@ TEMPLATES = [
             ],
         },
     },
+]
+
+# For development, explicitly allow your Vite dev server:
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 WSGI_APPLICATION = "coverworth_backend.wsgi.application"
