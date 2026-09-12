@@ -16,10 +16,24 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path
-from django.views.generic import TemplateView
+
+
+def health_check(request):
+    return JsonResponse({
+        "status": "ok",
+        "message": "CoverWorth backend is connected"
+    })
+
+def home(request):
+    return JsonResponse({
+        "message": "CoverWorth backend is running"
+    })
+
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', TemplateView.as_view(template_name='index.html'), name='home'),
+    path("", home, name="home"),
+    path("admin/", admin.site.urls),
+    path("api/health/", health_check, name="health-check"),
 ]

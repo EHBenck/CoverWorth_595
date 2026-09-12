@@ -83,7 +83,7 @@ cd frontend
 
 Install all frontend dependencies:
 
-npm install
+npm ci
 
 
 This reads `package.json` and installs the required packages into `node_modules`.
@@ -102,18 +102,20 @@ http://localhost:5173/
 
 ## Starting the Project After Initial Setup
 
-You only need to create the virtual environment and run `npm install` the first time, or whenever dependencies change.
+You only need to create the virtual environment and run `npm ci` the first time, or whenever dependencies change.
 
 ### Terminal 1 — Backend
 
 
 cd backend
+python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py runserver
 
 
 ### Terminal 2 — Frontend
 
 cd frontend
+npm ci
 npm run dev
 
 
@@ -135,7 +137,7 @@ cd backend
 If frontend dependencies may have changed:
 
 cd frontend
-npm install
+npm ci
 
 
 Then start both servers normally.
@@ -148,4 +150,3 @@ Do **not** commit the following folders:
 
 backend/.venv/
 frontend/node_modules/
-
