@@ -1,13 +1,7 @@
 from nicegui import ui
 
 
-# ============================================================
 # COVERWORTH DASHBOARD
-# ------------------------------------------------------------
-# For now the dashboard uses placeholder/demo data.
-# Later these values can come from your Django backend/API.
-# ============================================================
-
 
 # ------------------------------------------------------------------
 # MOCK DATA
