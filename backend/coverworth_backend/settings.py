@@ -40,7 +40,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
-    "inventory_manager"
+    "inventory_manager",
+    "myapp",
 ]
 
 MIDDLEWARE = [
@@ -59,7 +60,7 @@ ROOT_URLCONF = "coverworth_backend.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR.parent / 'frontend' / 'dist'],
+        "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -74,8 +75,11 @@ TEMPLATES = [
 # For development, explicitly allow your Vite dev server:
 CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",
-    default="http://localhost:5173,http://127.0.0.1:5173",
-    cast=Csv()
+    default=(
+        "http://localhost:8080,http://127.0.0.1:8080,"
+        "http://localhost:5173,http://127.0.0.1:5173"
+    ),
+    cast=Csv(),
 )
 
 WSGI_APPLICATION = "coverworth_backend.wsgi.application"
@@ -137,3 +141,9 @@ MAILERS = {
         "BACKEND": "django.core.mail.backends.console.EmailBackend",
     },
 }
+
+    # media files (item photos, recieipts attachments)
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
