@@ -324,21 +324,25 @@ class Item(models.Model):
 
     purchase_date = models.DateField(blank=True, null=True)
 
-    # SQLite MVP: money is stored in minor units.
-    # Example: 49999 == $499.99 when Inventory.default_currency == "USD".
-    purchase_amount_minor = models.PositiveBigIntegerField(
+    purchase_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
 
     # Cached current estimate for fast inventory/dashboard reads.
     # ValuationRun remains the historical source of truth.
-    current_estimated_amount_minor = models.PositiveBigIntegerField(
+    current_estimated_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
 
-    manual_value_minor = models.PositiveBigIntegerField(
+    manual_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
@@ -389,10 +393,10 @@ class Item(models.Model):
                 )
 
     @property
-    def effective_value_minor(self):
-        if self.manual_value_minor is not None:
-            return self.manual_value_minor
-        return self.current_estimated_amount_minor
+    def effective_value(self):
+        if self.manual_value is not None:
+            return self.manual_value
+        return self.current_estimated_amount
 
     def __str__(self):
         return self.name
@@ -491,18 +495,25 @@ class ValuationRun(models.Model):
         default=ValuationStatus.PENDING,
     )
 
-    estimated_amount_minor = models.PositiveBigIntegerField(
+    estimated_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
 
     currency = models.CharField(max_length=3, default="USD")
 
-    range_low_minor = models.PositiveBigIntegerField(
+    range_low = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
-    range_high_minor = models.PositiveBigIntegerField(
+
+    range_high = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
@@ -547,9 +558,9 @@ class ValuationRun(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
-                    Q(range_low_minor__isnull=True)
-                    | Q(range_high_minor__isnull=True)
-                    | Q(range_low_minor__lte=F("range_high_minor"))
+                    Q(range_low__isnull=True)
+                    | Q(range_high__isnull=True)
+                    | Q(range_low__lte=F("range_high"))
                 ),
                 name="valuation_range_ordered",
             ),
@@ -593,7 +604,9 @@ class ValuationSourceResult(models.Model):
     results_found = models.PositiveIntegerField(default=0)
     results_used = models.PositiveIntegerField(default=0)
 
-    source_estimate_minor = models.PositiveBigIntegerField(
+    source_estimate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
@@ -641,12 +654,16 @@ class ComparableListing(models.Model):
     url = models.URLField(max_length=2048, blank=True)
     title = models.CharField(max_length=512)
 
-    price_minor = models.PositiveBigIntegerField(
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
 
-    shipping_minor = models.PositiveBigIntegerField(
+    shipping = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         blank=True,
         null=True,
     )
