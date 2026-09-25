@@ -1,0 +1,1645 @@
+{
+  "href": "https://api.ebay.com/buy/browse/v1/item_summary/search?q=iPhone+13+128GB&limit=20&offset=0",
+  "total": 16609,
+  "next": "https://api.ebay.com/buy/browse/v1/item_summary/search?q=iPhone+13+128GB&limit=20&offset=20",
+  "limit": 20,
+  "offset": 0,
+  "itemSummaries": [
+    {
+      "itemId": "v1|226523060489|525707284137",
+      "title": "Apple iPhone 13 128GB Fully Unlocked - Very Good Condition",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=226523060489",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/uVoAAOSwNx1lxQnL/s-l225.jpg"
+      },
+      "price": {
+        "value": "263.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C226523060489%7C525707284137",
+      "seller": {
+        "username": "gadget-solutions",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 30964
+      },
+      "condition": "Very Good - Refurbished",
+      "conditionId": "2020",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/uVoAAOSwNx1lxQnL/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "11049276145",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/226523060489?_skw=iPhone+13+128GB&hash=item34bdd39909%3Ag%3AuVoAAOSwNx1lxQnL&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/226523060489?_skw=iPhone+13+128GB&hash=item34bdd39909:g:uVoAAOSwNx1lxQnL",
+      "itemLocation": {
+        "postalCode": "112**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/pCYAAOSwYpJmvhP5/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "226523060489",
+      "availableCoupons": false,
+      "itemOriginDate": "2023-11-20T21:15:12.000Z",
+      "itemCreationDate": "2025-01-01T13:23:27.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|128012911372|429209094763",
+      "title": "Apple iPhone 13 A2482 128GB Unlocked Very Good Refurbished All Colors",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=128012911372",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/UZ8AAeSwknFqc8o-/s-l225.jpg"
+      },
+      "price": {
+        "value": "249.61",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C128012911372%7C429209094763",
+      "seller": {
+        "username": "verizon",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 34348
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "829.99",
+          "currency": "USD"
+        },
+        "discountPercentage": "70",
+        "discountAmount": {
+          "value": "580.38",
+          "currency": "USD"
+        },
+        "priceTreatment": "LIST_PRICE"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/UZ8AAeSwknFqc8o-/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "22049282568",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/128012911372?_skw=iPhone+13+128GB&hash=item1dce2a030c%3Ag%3AUZ8AAeSwknFqc8o-&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZuD3eKsMvBPjp6E%2F4SLaTY7yn8sm7eO4iC1ZdXjQWMkR0dcnZJa4iu8H7cQ9ag38vo%2Fv7C23YoXVzRPBE%2BWawRBmCTLFeVf2s%2FAJJ%2F2dzQGxlT1xyCBe%2FYEDI2m8tm1r09soyRuOLhb4I6lOsO8wuORl%2BCHn1aIsNgXGRGmbj8S%2BXr%2BrCQOLvaqBz%2Foy8JP6NeQYxF9UVBkAj1lrKfMEzvBtevRQUqKvnJKc0Uqcbnl5ZdR8Wo7R%2FX0cGtlAfzaMMLpKE8PlqxI%2BLqj1zmdzj8WucQCsZCVx5OysOuztpWog%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/128012911372?_skw=iPhone+13+128GB&hash=item1dce2a030c:g:UZ8AAeSwknFqc8o-&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZuD3eKsMvBPjp6E%2F4SLaTY7yn8sm7eO4iC1ZdXjQWMkR0dcnZJa4iu8H7cQ9ag38vo%2Fv7C23YoXVzRPBE%2BWawRBmCTLFeVf2s%2FAJJ%2F2dzQGxlT1xyCBe%2FYEDI2m8tm1r09soyRuOLhb4I6lOsO8wuORl%2BCHn1aIsNgXGRGmbj8S%2BXr%2BrCQOLvaqBz%2Foy8JP6NeQYxF9UVBkAj1lrKfMEzvBtevRQUqKvnJKc0Uqcbnl5ZdR8Wo7R%2FX0cGtlAfzaMMLpKE8PlqxI%2BLqj1zmdzj8WucQCsZCVx5OysOuztpWog%3D%3D",
+      "itemLocation": {
+        "postalCode": "761**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/pwQAAeSwAY9qc8o-/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "128012911372",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-08-05T23:36:47.000Z",
+      "itemCreationDate": "2026-08-05T23:36:47.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|267781879108|0",
+      "title": "Apple iPhone 13 A2482 128GB Midnight Black 6.1\" Unlocked Clean IMEI: Good",
+      "leafCategoryIds": [
+        "42425"
+      ],
+      "categories": [
+        {
+          "categoryId": "42425",
+          "categoryName": "Other Cell Phone Accessories"
+        },
+        {
+          "categoryId": "9394",
+          "categoryName": "Cell Phone Accessories"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/~GoAAeSwxlxqtFvx/s-l225.jpg"
+      },
+      "price": {
+        "value": "229.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C267781879108%7C0",
+      "seller": {
+        "username": "sagese-2015",
+        "feedbackPercentage": "99.7",
+        "feedbackScore": 18136
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/~GoAAeSwxlxqtFvx/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-06T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/267781879108?_skw=iPhone+13+128GB&hash=item3e590b3544%3Ag%3A%7EGoAAeSwxlxqtFvx&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZtwP0Aa4V48q1jMcz%2BLjMHk9YmZSuD0lXsT%2FNYLxBYZ5Nm7fwyWHKfRsODbh9ABBz2I%2BPjjWv%2Fx8Ms7javE9FhWu7fPohxW4AUmzG0S1xaHR3qGAAn4tVn%2FFEniyqsVaziZZrdnlZZZxp4wbv6gDRfUC2cYolpK8YNjZnC76gP%2BUePp%2ByBnAfSgwY7cGQJUipxJCWlj20UCeC2PuPJMvNZ8CMJ22WaWevdxCF0A7AetoTrVIw2v65igxMTKeKLcu6OEAFqqTSzkzuJhKlp7NOpEujsaw5hYQIci7cnqf7jUg%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/267781879108?_skw=iPhone+13+128GB&hash=item3e590b3544:g:~GoAAeSwxlxqtFvx&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZtwP0Aa4V48q1jMcz%2BLjMHk9YmZSuD0lXsT%2FNYLxBYZ5Nm7fwyWHKfRsODbh9ABBz2I%2BPjjWv%2Fx8Ms7javE9FhWu7fPohxW4AUmzG0S1xaHR3qGAAn4tVn%2FFEniyqsVaziZZrdnlZZZxp4wbv6gDRfUC2cYolpK8YNjZnC76gP%2BUePp%2ByBnAfSgwY7cGQJUipxJCWlj20UCeC2PuPJMvNZ8CMJ22WaWevdxCF0A7AetoTrVIw2v65igxMTKeKLcu6OEAFqqTSzkzuJhKlp7NOpEujsaw5hYQIci7cnqf7jUg%3D%3D",
+      "itemLocation": {
+        "postalCode": "432**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "267781879108",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-06-30T18:47:47.000Z",
+      "itemCreationDate": "2026-09-10T23:23:49.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|800710109202|0",
+      "title": "Fair Condition - Apple iPhone 13 128GB Black (AT&T ONLY) - Free Shipping",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/VkgAAeSwJKZqPvLT/s-l225.jpg"
+      },
+      "price": {
+        "value": "179.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C800710109202%7C0",
+      "seller": {
+        "username": "cellularchampions",
+        "feedbackPercentage": "99.9",
+        "feedbackScore": 2083
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "195.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "8",
+        "discountAmount": {
+          "value": "15.01",
+          "currency": "USD"
+        }
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/VkgAAeSwJKZqPvLT/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-01T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "16064993658",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/800710109202?_skw=iPhone+13+128GB&hash=itemba6e0aa812%3Ag%3AVkgAAeSwJKZqPvLT&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGY%2Fomlz%2FLHr3FevjNWYaE74eXMbxrOeOinhE7em4R3ZFZvq55aqU2LFxK4v8mFQN%2FEdApgEmXLeFNQaxfO9YSGRm4n459uXXvSgfOToVlQZhLkjv5IMHqMFleWYJS9HV%2B5QxVP%2BEbz6oYwnvr7J%2F%2BCOQg8dlO0eEWHZZspZ917UJ04KNCBjFjkyWlNmNyrYO%2B8DegI%2FtMtnd%2FLNbn3mNbw%2FhlPOeBvecO4YrpYCgjMa9cSJmSPiqrVyRTi7sj5ynKbziJm7kAh5T4mrK5enicXk6UEa2zi1y3ejfBhUWKk9cw%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/800710109202?_skw=iPhone+13+128GB&hash=itemba6e0aa812:g:VkgAAeSwJKZqPvLT&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGY%2Fomlz%2FLHr3FevjNWYaE74eXMbxrOeOinhE7em4R3ZFZvq55aqU2LFxK4v8mFQN%2FEdApgEmXLeFNQaxfO9YSGRm4n459uXXvSgfOToVlQZhLkjv5IMHqMFleWYJS9HV%2B5QxVP%2BEbz6oYwnvr7J%2F%2BCOQg8dlO0eEWHZZspZ917UJ04KNCBjFjkyWlNmNyrYO%2B8DegI%2FtMtnd%2FLNbn3mNbw%2FhlPOeBvecO4YrpYCgjMa9cSJmSPiqrVyRTi7sj5ynKbziJm7kAh5T4mrK5enicXk6UEa2zi1y3ejfBhUWKk9cw%3D%3D",
+      "itemLocation": {
+        "postalCode": "926**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/jOsAAeSwPZZqPvLS/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/OVEAAeSwtZFqPvLT/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/s9cAAeSw-h9qe14-/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/P8QAAeSwseNqe1~x/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/q70AAeSwVopqe1~2/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "800710109202",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-09-24T16:15:57.000Z",
+      "itemCreationDate": "2026-09-24T16:15:57.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|236866375981|0",
+      "title": "Apple iPhone 13 Unlocked 128GB | Refurbished - Good",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/TnQAAeSwG7dqTR2i/s-l225.jpg"
+      },
+      "price": {
+        "value": "228.60",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C236866375981%7C0",
+      "seller": {
+        "username": "maxbacksales",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 16216
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "254.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "10",
+        "discountAmount": {
+          "value": "25.40",
+          "currency": "USD"
+        },
+        "priceTreatment": "MARKDOWN"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/TnQAAeSwG7dqTR2i/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-01T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "11049276145",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/236866375981?_skw=iPhone+13+128GB&hash=item372656112d%3Ag%3ATnQAAeSwG7dqTR2i&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/236866375981?_skw=iPhone+13+128GB&hash=item372656112d:g:TnQAAeSwG7dqTR2i",
+      "itemLocation": {
+        "postalCode": "922**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "236866375981",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-06-08T20:15:00.000Z",
+      "itemCreationDate": "2026-06-08T20:15:00.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|236866375751|0",
+      "title": "Apple iPhone 13 Unlocked 128GB | Refurbished - Very Good",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/qrsAAeSwfGdqVTfJ/s-l225.jpg"
+      },
+      "price": {
+        "value": "239.40",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C236866375751%7C0",
+      "seller": {
+        "username": "maxbacksales",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 16216
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "266.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "10",
+        "discountAmount": {
+          "value": "26.60",
+          "currency": "USD"
+        },
+        "priceTreatment": "MARKDOWN"
+      },
+      "condition": "Very Good - Refurbished",
+      "conditionId": "2020",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/qrsAAeSwfGdqVTfJ/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-01T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "11049276145",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/236866375751?_skw=iPhone+13+128GB&hash=item3726561047%3Ag%3AqrsAAeSwfGdqVTfJ&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/236866375751?_skw=iPhone+13+128GB&hash=item3726561047:g:qrsAAeSwfGdqVTfJ",
+      "itemLocation": {
+        "postalCode": "922**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "236866375751",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-06-08T20:14:46.000Z",
+      "itemCreationDate": "2026-06-08T20:14:46.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|116996574826|417085613134",
+      "title": "Apple iPhone 13  128GB Unlocked FACTORY UNLOCKED  - EXCELLENT",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=116996574826",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/I14AAeSwV2dpcuJA/s-l225.jpg"
+      },
+      "price": {
+        "value": "276.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C116996574826%7C417085613134",
+      "seller": {
+        "username": "everythingforlesss",
+        "feedbackPercentage": "99.8",
+        "feedbackScore": 93019
+      },
+      "condition": "Excellent - Refurbished",
+      "conditionId": "2010",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/I14AAeSwV2dpcuJA/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-06T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "22049282568",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/116996574826?_skw=iPhone+13+128GB&hash=item1b3d8a0e6a%3Ag%3AI14AAeSwV2dpcuJA&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/116996574826?_skw=iPhone+13+128GB&hash=item1b3d8a0e6a:g:I14AAeSwV2dpcuJA",
+      "itemLocation": {
+        "postalCode": "480**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/4~QAAeSw~gBpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/5U4AAeSwevBpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/MWYAAeSwWQFpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/i-8AAeSwmNdpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/3i8AAeSwQAVpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/1-EAAeSwCfFpcuL6/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/3zEAAeSw-M9pcuL6/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "116996574826",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-01-23T02:59:22.000Z",
+      "itemCreationDate": "2026-01-23T02:59:22.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|326340406452|515464918269",
+      "title": "Apple iPhone 13 Mini 128GB - Fully Unlocked - VERY GOOD Condition",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=326340406452",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/m08AAOSw4kFnN6O3/s-l225.jpg"
+      },
+      "price": {
+        "value": "220.79",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C326340406452%7C515464918269",
+      "seller": {
+        "username": "gadget-solutions",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 30964
+      },
+      "condition": "Very Good - Refurbished",
+      "conditionId": "2020",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/m08AAOSw4kFnN6O3/s-l960.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "9049279823",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/326340406452?_skw=iPhone+13+128GB&hash=item4bfb676cb4%3Ag%3Am08AAOSw4kFnN6O3&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/326340406452?_skw=iPhone+13+128GB&hash=item4bfb676cb4:g:m08AAOSw4kFnN6O3",
+      "itemLocation": {
+        "postalCode": "112**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "326340406452",
+      "availableCoupons": false,
+      "itemOriginDate": "2024-11-15T19:40:08.000Z",
+      "itemCreationDate": "2024-11-15T19:40:08.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|158332141055|0",
+      "title": "Apple iPhone 13 - 128 GB - Starlight (Unlocked) - SEE PHOTOS & DESCRIPTION",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/oewAAeSwlYNqtLOQ/s-l225.jpg"
+      },
+      "price": {
+        "value": "160.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C158332141055%7C0",
+      "seller": {
+        "username": "donni9616",
+        "feedbackPercentage": "99.2",
+        "feedbackScore": 1054
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/oewAAeSwlYNqtLOQ/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-10-06T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "8049288614",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/158332141055?_skw=iPhone+13+128GB&hash=item24dd54bdff%3Ag%3AoewAAeSwlYNqtLOQ&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/158332141055?_skw=iPhone+13+128GB&hash=item24dd54bdff:g:oewAAeSwlYNqtLOQ",
+      "itemLocation": {
+        "postalCode": "117**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/ok4AAeSweLRqtLOP/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/gbAAAeSwZ-RqtLOr/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/o9MAAeSw-YBqtLOx/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/egUAAeSwGTlqtLOs/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/pRQAAeSwj5ZqtLOV/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/t~wAAeSwg8FqtLOU/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/eFEAAeSwjhxqtLOU/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/mnQAAeSw5B9qtLOZ/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/ljkAAeSwXGNqtLOY/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/nmkAAeSwbmxqtLOX/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/p34AAeSwUodqtLOX/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/g7QAAeSwtyZqtLOZ/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "158332141055",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-09-24T05:25:40.000Z",
+      "itemCreationDate": "2026-09-24T05:25:40.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|168308845229|467833636390",
+      "title": "Apple iPhone 13 128GB Factory Unlocked Very Good",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=168308845229",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/GWoAAeSwj7pqquvM/s-l225.jpg"
+      },
+      "price": {
+        "value": "247.00",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C168308845229%7C467833636390",
+      "seller": {
+        "username": "savaydeals",
+        "feedbackPercentage": "99.9",
+        "feedbackScore": 21232
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "260.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "5",
+        "discountAmount": {
+          "value": "13.00",
+          "currency": "USD"
+        },
+        "priceTreatment": "MARKDOWN"
+      },
+      "condition": "Very Good - Refurbished",
+      "conditionId": "2020",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/GWoAAeSwj7pqquvM/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "8049288614",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/168308845229?_skw=iPhone+13+128GB&hash=item272ffd2aad%3Ag%3AGWoAAeSwj7pqquvM&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/168308845229?_skw=iPhone+13+128GB&hash=item272ffd2aad:g:GWoAAeSwj7pqquvM",
+      "itemLocation": {
+        "postalCode": "212**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/M-wAAeSwwelqquvZ/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/Vc4AAeSwK45qquvb/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "168308845229",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-04-14T18:38:44.000Z",
+      "itemCreationDate": "2026-04-14T18:38:44.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|389923718241|657161573898",
+      "title": "Apple iPhone 13 - 128GB/256GB - Unlocked - Mint Condition - Free Shipping",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=389923718241",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/iIsAAeSwDeVp6MF7/s-l225.jpg"
+      },
+      "price": {
+        "value": "286.00",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C389923718241%7C657161573898",
+      "seller": {
+        "username": "sarahcell",
+        "feedbackPercentage": "98.9",
+        "feedbackScore": 7408
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/iIsAAeSwDeVp6MF7/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "3072667858",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/389923718241?_skw=iPhone+13+128GB&hash=item5ac943c461%3Ag%3AiIsAAeSwDeVp6MF7&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/389923718241?_skw=iPhone+13+128GB&hash=item5ac943c461:g:iIsAAeSwDeVp6MF7",
+      "itemLocation": {
+        "postalCode": "770**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/3eAAAeSwhYVp6MF8/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/MzYAAeSwf8Fp6MF9/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/JnkAAeSw0Idp6MF9/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/MVYAAeSwrURp6MF-/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/L8QAAeSw8iBp6MF~/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/TckAAeSwrIhp6MF~/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/h4gAAeSwy6tp6MGA/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/PeYAAeSw0t5p6MGA/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "389923718241",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-04-22T12:39:31.000Z",
+      "itemCreationDate": "2026-04-22T12:39:31.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|157271002092|0",
+      "title": "Apple iPhone 13 - 128 GB - Midnight (Verizon)",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/ESoAAeSwJR5orJzr/s-l225.jpg"
+      },
+      "price": {
+        "value": "229.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C157271002092%7C0",
+      "seller": {
+        "username": "411phonedude",
+        "feedbackPercentage": "99.7",
+        "feedbackScore": 37710
+      },
+      "condition": "Open box",
+      "conditionId": "1500",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/ESoAAeSwJR5orJzr/s-l960.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "19049287599",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/157271002092?_skw=iPhone+13+128GB&hash=item249e150bec%3Ag%3AESoAAeSwJR5orJzr&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/157271002092?_skw=iPhone+13+128GB&hash=item249e150bec:g:ESoAAeSwJR5orJzr",
+      "itemLocation": {
+        "postalCode": "458**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/p~cAAeSw6WFo7UFA/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/1GUAAeSwWhJo7UFA/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/yi4AAeSwFoZo7UFW/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/f~oAAeSwyqlo7UFW/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "157271002092",
+      "availableCoupons": false,
+      "itemOriginDate": "2025-08-25T17:35:29.000Z",
+      "itemCreationDate": "2025-08-25T17:35:29.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|407241539143|0",
+      "title": "Apple iPhone 13 128GB Black  iOS Bar Touchscreen Smartphone",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/RFAAAeSwqM1qtZ3O/s-l225.jpg"
+      },
+      "price": {
+        "value": "150.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C407241539143%7C0",
+      "seller": {
+        "username": "pal5702",
+        "feedbackPercentage": "0.0",
+        "feedbackScore": 0
+      },
+      "condition": "Open box",
+      "conditionId": "1500",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/RFAAAeSwqM1qtZ3O/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "CALCULATED"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE",
+        "BEST_OFFER"
+      ],
+      "epid": "19049287599",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/407241539143?_skw=iPhone+13+128GB&hash=item5ed17cbe47%3Ag%3ARFAAAeSwqM1qtZ3O&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/407241539143?_skw=iPhone+13+128GB&hash=item5ed17cbe47:g:RFAAAeSwqM1qtZ3O",
+      "itemLocation": {
+        "postalCode": "044**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/jHsAAeSwiKpqtaJr/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "407241539143",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-09-23T17:38:25.000Z",
+      "itemCreationDate": "2026-09-24T12:11:09.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|127948412895|429132809812",
+      "title": "Apple iPhone 13 256GB Unlocked Good Condition All Colors",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=127948412895",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/WaQAAeSwUu9qQt6c/s-l225.jpg"
+      },
+      "price": {
+        "value": "267.05",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C127948412895%7C429132809812",
+      "seller": {
+        "username": "verizon",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 34348
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "699.99",
+          "currency": "USD"
+        },
+        "discountPercentage": "62",
+        "discountAmount": {
+          "value": "432.94",
+          "currency": "USD"
+        },
+        "priceTreatment": "LIST_PRICE"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/WaQAAeSwUu9qQt6c/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "24049280288",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/127948412895?_skw=iPhone+13+128GB&hash=item1dca51d7df%3Ag%3AWaQAAeSwUu9qQt6c&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZP1rymloPnGsmvrebwhvvnKrV6X6zQpG6l2J3XdBMcEzSTBndinPTLVB2%2BCmgJwvOjjtPQ%2BGZpbIajpLQh00isa1N2Z31Nc6msFXeUq7E6N31scU9jhTkv0ZrW7c6%2FGcsxSE2TjAoTwqo%2FHhoraNyPlpz1Qr2KONWYDpL32QDQzP4KAlR9me%2FAZCbxksScszcUpORsIDaRjYdumtgu1JA50I2rrXj3gcpSr9Mb9kOXtobbmjA7CkSLzySjrFbZyxgI0sRBP%2FTuh3OBmgyyXHFkxGZ6XQwJCO8%2BQPQlWju5TA%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/127948412895?_skw=iPhone+13+128GB&hash=item1dca51d7df:g:WaQAAeSwUu9qQt6c&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZP1rymloPnGsmvrebwhvvnKrV6X6zQpG6l2J3XdBMcEzSTBndinPTLVB2%2BCmgJwvOjjtPQ%2BGZpbIajpLQh00isa1N2Z31Nc6msFXeUq7E6N31scU9jhTkv0ZrW7c6%2FGcsxSE2TjAoTwqo%2FHhoraNyPlpz1Qr2KONWYDpL32QDQzP4KAlR9me%2FAZCbxksScszcUpORsIDaRjYdumtgu1JA50I2rrXj3gcpSr9Mb9kOXtobbmjA7CkSLzySjrFbZyxgI0sRBP%2FTuh3OBmgyyXHFkxGZ6XQwJCO8%2BQPQlWju5TA%3D%3D",
+      "itemLocation": {
+        "postalCode": "761**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "127948412895",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-06-29T21:06:36.000Z",
+      "itemCreationDate": "2026-06-29T21:06:36.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|235272916954|535311898163",
+      "title": "Apple iPhone 13, 128/256/512GB - Fully Unlocked - Used - All colors",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=235272916954",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/sMQAAOSwcSFkCfCZ/s-l225.jpg"
+      },
+      "price": {
+        "value": "249.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C235272916954%7C535311898163",
+      "seller": {
+        "username": "electronicdea1s",
+        "feedbackPercentage": "99.3",
+        "feedbackScore": 44732
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/sMQAAOSwcSFkCfCZ/s-l1600.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "12052764234",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/235272916954?_skw=iPhone+13+128GB&hash=item36c75bcfda%3Ag%3AsMQAAOSwcSFkCfCZ&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZm6vd0K4eV0enIZqvbuBIwcwCgxyXUC8Egedkf2MRjJ21YxRxCsiRzPuoobLGuDT2IvQeYnq4KPBRaNFmvOzeYHeSD6DO5JOHwIAJE1QG8MYfOochOpftVwluLGllQvQp3yekjlgSGNrj2tpgcLDxZ%2B4M2wocWAF%2F2QhTLx%2FMbpjRecHOwTk%2Bxok1Dd6yiPrBOTttw56rD68kUDdDQ2WPISiC5v%2FF4k0%2BbnKoliEOAekYbcAr0cH34VyJcrYLBqh2PS%2BkAjzM6s%2Bo%2BczxOkZfx2OAQEzfGe4sYJC1cQGUhrg%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/235272916954?_skw=iPhone+13+128GB&hash=item36c75bcfda:g:sMQAAOSwcSFkCfCZ&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZm6vd0K4eV0enIZqvbuBIwcwCgxyXUC8Egedkf2MRjJ21YxRxCsiRzPuoobLGuDT2IvQeYnq4KPBRaNFmvOzeYHeSD6DO5JOHwIAJE1QG8MYfOochOpftVwluLGllQvQp3yekjlgSGNrj2tpgcLDxZ%2B4M2wocWAF%2F2QhTLx%2FMbpjRecHOwTk%2Bxok1Dd6yiPrBOTttw56rD68kUDdDQ2WPISiC5v%2FF4k0%2BbnKoliEOAekYbcAr0cH34VyJcrYLBqh2PS%2BkAjzM6s%2Bo%2BczxOkZfx2OAQEzfGe4sYJC1cQGUhrg%3D%3D",
+      "itemLocation": {
+        "postalCode": "112**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/~UIAAOSwurRkCfDM/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/De8AAOSwJ91kCfDM/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/~TYAAOSwroVkCfGy/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/0AQAAOSwo4BkCfGy/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/rE0AAOSwfyBkCfGy/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/k2EAAOSwOl1kCfI1/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/NscAAOSwCr9kCfI1/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/WmsAAOSwVyBlVO8X/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "235272916954",
+      "availableCoupons": false,
+      "itemOriginDate": "2023-10-27T21:47:39.000Z",
+      "itemCreationDate": "2023-10-27T21:47:39.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|285596736546|587579309328",
+      "title": "Apple iPhone 13 128GB Unlocked Good Condition - All Colors",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=285596736546",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/4LMAAOSwZQ1mjZt7/s-l225.jpg"
+      },
+      "price": {
+        "value": "275.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C285596736546%7C587579309328",
+      "seller": {
+        "username": "itsworthmore",
+        "feedbackPercentage": "99.6",
+        "feedbackScore": 180700
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/4LMAAOSwZQ1mjZt7/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "12052764234",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/285596736546?_skw=iPhone+13+128GB&hash=item427ee45c22%3Ag%3A4LMAAOSwZQ1mjZt7&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGa39A0jUQci09MC4NBlr8jmy%2BV0s8vqHAKRQLqu5E5H4R9xvLnd5rEoH8JJaex%2BiaUeDTxLdfCPaJ2KC8OppMHmI2OYlaJn1Yk78D59199XNmRwK83ZS1sqMPyJAf8KfI1PLakonNNjLObBpoqFBvrs0lSMdNf6p%2BhT%2BuIeOiGeslkCVsjPfS3IoUaWVJICqOiabbCaInbxVDXA%2FLCIzau0EpX4KFmLcwnnWmCA%2FNY21sfZ9iRhSZazgSfu8sj%2Bed40k3HYY0tKJOx6m%2FObeSNtRaFMomkBmrq1kOkZRnZE0Q%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/285596736546?_skw=iPhone+13+128GB&hash=item427ee45c22:g:4LMAAOSwZQ1mjZt7&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGa39A0jUQci09MC4NBlr8jmy%2BV0s8vqHAKRQLqu5E5H4R9xvLnd5rEoH8JJaex%2BiaUeDTxLdfCPaJ2KC8OppMHmI2OYlaJn1Yk78D59199XNmRwK83ZS1sqMPyJAf8KfI1PLakonNNjLObBpoqFBvrs0lSMdNf6p%2BhT%2BuIeOiGeslkCVsjPfS3IoUaWVJICqOiabbCaInbxVDXA%2FLCIzau0EpX4KFmLcwnnWmCA%2FNY21sfZ9iRhSZazgSfu8sj%2Bed40k3HYY0tKJOx6m%2FObeSNtRaFMomkBmrq1kOkZRnZE0Q%3D%3D",
+      "itemLocation": {
+        "postalCode": "327**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "285596736546",
+      "availableCoupons": false,
+      "itemOriginDate": "2023-12-07T20:04:32.000Z",
+      "itemCreationDate": "2023-12-07T20:04:32.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|156744846451|458131107767",
+      "title": "Apple iPhone 13 mini 128GB 256GB 512GB Unlocked Smartphone - All Colors - Good",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=156744846451",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/TvEAAOSwwhRnwdt3/s-l225.jpg"
+      },
+      "price": {
+        "value": "210.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C156744846451%7C458131107767",
+      "seller": {
+        "username": "kisselectronicsinc",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 37732
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "699.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "70",
+        "discountAmount": {
+          "value": "488.01",
+          "currency": "USD"
+        },
+        "priceTreatment": "LIST_PRICE"
+      },
+      "condition": "Used",
+      "conditionId": "3000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/TvEAAOSwwhRnwdt3/s-l960.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-30T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "26049291214",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/156744846451?_skw=iPhone+13+128GB&hash=item247eb88c73%3Ag%3ATvEAAOSwwhRnwdt3&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/156744846451?_skw=iPhone+13+128GB&hash=item247eb88c73:g:TvEAAOSwwhRnwdt3",
+      "itemLocation": {
+        "postalCode": "070**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/iFUAAeSwdnhozXIt/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/epIAAeSwOS5ozXIt/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/jBkAAeSwxtFozXIt/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/w9MAAeSwaA5ozXIt/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "156744846451",
+      "availableCoupons": false,
+      "itemOriginDate": "2025-02-28T15:56:18.000Z",
+      "itemCreationDate": "2025-02-28T15:56:18.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|128011007697|429207241638",
+      "title": "Apple iPhone 13 A2482 128GB Unlocked Good Condition All Colors",
+      "itemGroupHref": "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id=128011007697",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/ERgAAeSwa3tqclTI/s-l225.jpg"
+      },
+      "price": {
+        "value": "270.99",
+        "currency": "USD"
+      },
+      "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C128011007697%7C429207241638",
+      "seller": {
+        "username": "verizon",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 34348
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "999.99",
+          "currency": "USD"
+        },
+        "discountPercentage": "73",
+        "discountAmount": {
+          "value": "729.00",
+          "currency": "USD"
+        },
+        "priceTreatment": "LIST_PRICE"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/ERgAAeSwa3tqclTI/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "8049288614",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/128011007697?_skw=iPhone+13+128GB&hash=item1dce0cf6d1%3Ag%3AERgAAeSwa3tqclTI&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/128011007697?_skw=iPhone+13+128GB&hash=item1dce0cf6d1:g:ERgAAeSwa3tqclTI",
+      "itemLocation": {
+        "postalCode": "761**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "128011007697",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-08-04T21:05:10.000Z",
+      "itemCreationDate": "2026-08-04T21:05:10.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": false,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|128096946594|0",
+      "title": "Apple iPhone 13 128GB Unlocked Midnight A2482 MLML3LL/A Brand New Sealed",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/Bk0AAOSwDTJjoWgp/s-l225.jpg"
+      },
+      "price": {
+        "value": "359.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C128096946594%7C0",
+      "seller": {
+        "username": "gophermods",
+        "feedbackPercentage": "99.9",
+        "feedbackScore": 9612
+      },
+      "condition": "New",
+      "conditionId": "1000",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/Bk0AAOSwDTJjoWgp/s-l225.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-29T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "11049276145",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/128096946594?_skw=iPhone+13+128GB&hash=item1dd32c49a2%3Ag%3ABk0AAOSwDTJjoWgp&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZUMmRCA8B13YfDCzaQSQX8%2FXRMEPX5FS%2Fb%2BqRgkENvHNEYCHOWFbrwMRv6IOdE0ZNSFQBzsBPL8hHznkz1v7bFDUC5QArTgaDHMC7Pl%2FUJpqgEW1AP%2FpsjrytyecTCDJJFOGn0HURBaT1Cbk%2F6I3bmWCrMcr%2BubyJkuLY824SSFJbLLAlB2s5mJkfqw%2B8Ffer2VJSvCrdb8gKYaUAdaqfS7awpApjcE%2BGj1hzXu66UHWb%2B5Z5fcw%2FiOjWl05jcxpjMpj%2B%2Fyq6Uws2PXQqPI46Z1CgtGMkfyRQbcGqxFSw7ZA%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/128096946594?_skw=iPhone+13+128GB&hash=item1dd32c49a2:g:Bk0AAOSwDTJjoWgp&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGZUMmRCA8B13YfDCzaQSQX8%2FXRMEPX5FS%2Fb%2BqRgkENvHNEYCHOWFbrwMRv6IOdE0ZNSFQBzsBPL8hHznkz1v7bFDUC5QArTgaDHMC7Pl%2FUJpqgEW1AP%2FpsjrytyecTCDJJFOGn0HURBaT1Cbk%2F6I3bmWCrMcr%2BubyJkuLY824SSFJbLLAlB2s5mJkfqw%2B8Ffer2VJSvCrdb8gKYaUAdaqfS7awpApjcE%2BGj1hzXu66UHWb%2B5Z5fcw%2FiOjWl05jcxpjMpj%2B%2Fyq6Uws2PXQqPI46Z1CgtGMkfyRQbcGqxFSw7ZA%3D%3D",
+      "itemLocation": {
+        "postalCode": "551**",
+        "country": "US"
+      },
+      "adultOnly": false,
+      "legacyItemId": "128096946594",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-09-24T19:23:17.000Z",
+      "itemCreationDate": "2026-09-24T19:23:17.000Z",
+      "topRatedBuyingExperience": true,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    },
+    {
+      "itemId": "v1|127647068432|0",
+      "title": "Apple iPhone 13 256GB Pink Unlocked Good Condition",
+      "leafCategoryIds": [
+        "9355"
+      ],
+      "categories": [
+        {
+          "categoryId": "9355",
+          "categoryName": "Cell Phones & Smartphones"
+        },
+        {
+          "categoryId": "15032",
+          "categoryName": "Cell Phones & Accessories"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/UOkAAeSw-3lpg4oh/s-l225.jpg"
+      },
+      "price": {
+        "value": "271.12",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C127647068432%7C0",
+      "seller": {
+        "username": "verizon",
+        "feedbackPercentage": "99.5",
+        "feedbackScore": 34348
+      },
+      "marketingPrice": {
+        "originalPrice": {
+          "value": "729.00",
+          "currency": "USD"
+        },
+        "discountPercentage": "63",
+        "discountAmount": {
+          "value": "457.88",
+          "currency": "USD"
+        },
+        "priceTreatment": "LIST_PRICE"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "thumbnailImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/UOkAAeSw-3lpg4oh/s-l1200.jpg"
+        }
+      ],
+      "shippingOptions": [
+        {
+          "shippingCostType": "FIXED",
+          "shippingCost": {
+            "value": "0.00",
+            "currency": "USD"
+          },
+          "minEstimatedDeliveryDate": "2026-09-26T07:00:00.000Z",
+          "maxEstimatedDeliveryDate": "2026-09-28T07:00:00.000Z"
+        }
+      ],
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "epid": "8049288706",
+      "itemAffiliateWebUrl": "https://www.ebay.com/itm/127647068432?_skw=iPhone+13+128GB&hash=item1db85bb110%3Ag%3AUOkAAeSw-3lpg4oh&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGYrSoTUoGf02fLjXNGwmMBDneyOCv%2BNqq2a0TJmll9eP85MQUd4NmOEajYzK477V9NhLagoN4nktyKtm3dWjlwvjqm5FtgrvorcPLTcNVyRIa905ZfVL4%2BoUkdymVcBjLd2TPTtmaGUenpJAHmlWuLOf%2BLQTbnonwJr5EgRnyxdZxTYH4gF06Zcoh342d%2BGIfChf3SqDopwUA9aUhrzQtuyyT5G%2BxGE%2FbKLPgBbYMYEyCYwVJGczQftmEYAE%2FpRmSkXOj0sdopW9Bep1UgESTfMIU0%2Fqm8uTTK3p6LYEsk%2BEQ%3D%3D&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&campid=%253CePNCampaignId%253E&customid=%253CreferenceId%253E&toolid=10049",
+      "itemWebUrl": "https://www.ebay.com/itm/127647068432?_skw=iPhone+13+128GB&hash=item1db85bb110:g:UOkAAeSw-3lpg4oh&amdata=enc%3AAQALAAAA8ACCtXRWQnOEpyOqnQQ8KGYrSoTUoGf02fLjXNGwmMBDneyOCv%2BNqq2a0TJmll9eP85MQUd4NmOEajYzK477V9NhLagoN4nktyKtm3dWjlwvjqm5FtgrvorcPLTcNVyRIa905ZfVL4%2BoUkdymVcBjLd2TPTtmaGUenpJAHmlWuLOf%2BLQTbnonwJr5EgRnyxdZxTYH4gF06Zcoh342d%2BGIfChf3SqDopwUA9aUhrzQtuyyT5G%2BxGE%2FbKLPgBbYMYEyCYwVJGczQftmEYAE%2FpRmSkXOj0sdopW9Bep1UgESTfMIU0%2Fqm8uTTK3p6LYEsk%2BEQ%3D%3D",
+      "itemLocation": {
+        "postalCode": "761**",
+        "country": "US"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/8qgAAeSwyV5pg4oi/s-l225.jpg"
+        },
+        {
+          "imageUrl": "https://i.ebayimg.com/images/g/E98AAeSwhf5pg4oi/s-l225.jpg"
+        }
+      ],
+      "adultOnly": false,
+      "legacyItemId": "127647068432",
+      "availableCoupons": false,
+      "itemOriginDate": "2026-01-26T17:36:05.000Z",
+      "itemCreationDate": "2026-01-26T17:36:05.000Z",
+      "topRatedBuyingExperience": false,
+      "priorityListing": true,
+      "listingMarketplaceId": "EBAY_US"
+    }
+  ]
+}

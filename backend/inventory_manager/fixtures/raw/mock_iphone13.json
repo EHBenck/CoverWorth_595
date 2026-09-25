@@ -1,0 +1,49 @@
+{
+  "itemSummaries": [
+    {
+      "title": "Apple iPhone 13 128GB Blue Unlocked",
+      "price": {
+        "value": "329.99",
+        "currency": "USD"
+      },
+      "buyingOptions": ["FIXED_PRICE"],
+      "conditionId": "3000"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Black",
+      "price": {
+        "value": "299.99",
+        "currency": "USD"
+      },
+      "buyingOptions": ["FIXED_PRICE"],
+      "conditionId": "3000"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "price": {
+        "value": "319.50",
+        "currency": "USD"
+      },
+      "buyingOptions": ["FIXED_PRICE"],
+      "conditionId": "3000"
+    },
+    {
+      "title": "iPhone 13 Case",
+      "price": {
+        "value": "15.99",
+        "currency": "USD"
+      },
+      "buyingOptions": ["FIXED_PRICE"],
+      "conditionId": "3000"
+    },
+    {
+      "title": "Apple iPhone 13 For Parts",
+      "price": {
+        "value": "99.99",
+        "currency": "USD"
+      },
+      "buyingOptions": ["FIXED_PRICE"],
+      "conditionId": "7000"
+    }
+  ]
+}
