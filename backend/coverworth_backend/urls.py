@@ -19,9 +19,6 @@ from django.contrib import admin
 from django.db import connection
 from django.http import JsonResponse
 from django.urls import path
-
-from myapp.views import dashboard_summary
-
 from myapp.models import Item
 from myapp import views
 
@@ -71,5 +68,6 @@ urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
     path("api/health/", health_check, name="health-check"),
-    path("api/dashboard-summary/", dashboard_summary, name="dashboard-summary"),
+    path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
+    path("api/items/", views.item_list, name="item-list"),
 ]
