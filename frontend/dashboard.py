@@ -1,68 +1,51 @@
+import requests
+import os
 from nicegui import ui
 
 
 # COVERWORTH DASHBOARD
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+# ------------------------------------------------------------------
+# DATA FETCHING FROM BACKEND
+# ------------------------------------------------------------------
+
+async def load_dashboard_data():
+    """Fetch dashboard summary from backend"""
+    try:
+        response = requests.get(f"{BACKEND_URL}/api/dashboard/", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        return {
+            "summary": data.get("summary", {}),
+            "category_data": data.get("category_data", []),
+            "recent_items": data.get("recent_items", []),
+        }
+    except requests.RequestException as e:
+        print(f"Error loading dashboard: {e}")
+        return {
+            "summary": {
+                "total_items": 0,
+                "estimated_value": 0,
+                "purchase_value": 0,
+                "items_needing_attention": 0,
+            },
+            "category_data": [],
+            "recent_items": [],
+        }
 
 # ------------------------------------------------------------------
-# MOCK DATA
-# Replace this later with API calls to Django.
+# GLOBAL DATA (will be populated from API)
 # ------------------------------------------------------------------
 
 dashboard_data = {
-    "total_items": 128,
-    "estimated_value": 24580,
-    "purchase_value": 19200,
-    "items_needing_attention": 5,
+    "total_items": 0,
+    "estimated_value": 0,
+    "purchase_value": 0,
+    "items_needing_attention": 0,
 }
-
-
-category_data = [
-    {"name": "Electronics", "value": 7866},
-    {"name": "Watches", "value": 4424},
-    {"name": "Collectibles", "value": 3441},
-    {"name": "Furniture", "value": 2949},
-    {"name": "Sports", "value": 2458},
-    {"name": "Other", "value": 3442},
-]
-
-
-recent_items = [
-    {
-        "name": "Canon EOS R6",
-        "category": "Electronics",
-        "value": 1850,
-        "date": "Sep 10, 2026",
-        "icon": "photo_camera",
-    },
-    {
-        "name": "Seiko Prospex",
-        "category": "Watches",
-        "value": 725,
-        "date": "Sep 9, 2026",
-        "icon": "watch",
-    },
-    {
-        "name": "MacBook Pro",
-        "category": "Electronics",
-        "value": 1250,
-        "date": "Sep 8, 2026",
-        "icon": "laptop_mac",
-    },
-    {
-        "name": "Lake Painting",
-        "category": "Art",
-        "value": 475,
-        "date": "Sep 7, 2026",
-        "icon": "image",
-    },
-    {
-        "name": "Leather Couch",
-        "category": "Furniture",
-        "value": 2100,
-        "date": "Sep 6, 2026",
-        "icon": "chair",
-    },
-]
+category_data = []
+recent_items = []
 
 
 # ------------------------------------------------------------------
@@ -179,7 +162,7 @@ ui.add_css("""
         max-width: 1450px;
         margin: 0 auto;
     }
-""")
+""", shared=True)
 
 
 # ------------------------------------------------------------------
@@ -380,7 +363,7 @@ def recent_items_card() -> None:
                         "rounded-lg flex items-center "
                         "justify-center"
                     ):
-                        ui.icon(item["icon"]).classes(
+                        ui.icon(item.get("icon", "inventory_2")).classes(
                             "text-2xl text-slate-600"
                         )
 
@@ -478,7 +461,13 @@ def attention_banner() -> None:
 # ------------------------------------------------------------------
 
 @ui.page("/")
-def dashboard_page():
+async def dashboard_page():
+
+    global dashboard_data, recent_items, category_data
+    api_data = await load_dashboard_data()
+    dashboard_data = api_data["summary"]
+    category_data = api_data["category_data"]
+    recent_items = api_data["recent_items"]
 
     # --------------------------------------------------------------
     # SIDEBAR
