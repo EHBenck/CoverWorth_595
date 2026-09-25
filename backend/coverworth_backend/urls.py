@@ -20,8 +20,8 @@ from django.db import connection
 from django.http import JsonResponse
 from django.urls import include, path
 
-from myapp.models import Item
-from myapp import views
+from myapp.views import dashboard_summary
+
 
 def health_check(request):
     """Verify Django and the database are connected."""
@@ -68,7 +68,6 @@ def home(request):
 urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
-    path("api/health/", health_check, name="health-check",),
-    path("api/dashboard/", views.dashboard_summary, name="dashboard-summary",),
-    path("api/items/", views.item_list, name="item-list",),
+    path("api/health/", health_check, name="health-check"),
+    path("api/dashboard-summary/", dashboard_summary, name="dashboard-summary"),
 ]
