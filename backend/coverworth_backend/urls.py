@@ -19,6 +19,8 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path
 
+from myapp.views import dashboard_summary
+
 
 def health_check(request):
     return JsonResponse({
@@ -36,4 +38,5 @@ urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
     path("api/health/", health_check, name="health-check"),
+    path("api/dashboard-summary/", dashboard_summary, name="dashboard-summary"),
 ]
