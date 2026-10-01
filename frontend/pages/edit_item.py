@@ -85,12 +85,12 @@ async def edit_item_page(item_id: str):
                 else:
                     purchase_date_value = datetime.now().date()
                 
+                ui.label("Date Acquired *")
                 purchase_date_input = ui.date(
-                    label="Date Acquired *",
                     value=purchase_date_value
                 ).classes("w-full")
                 date_error = ui.label().classes("text-red-500 text-sm hidden")
-                
+
                 # Purchase Amount
                 purchase_amount_input = ui.number(
                     label="Purchase Price ($) *",
@@ -210,7 +210,7 @@ async def edit_item_page(item_id: str):
                     success_label.visible = True
                     
                     # Redirect after 1.5 seconds
-                    ui.timer(1.5, lambda: ui.navigate(f"/item/{item_id}"))
+                    ui.timer(1.5, lambda: ui.navigate.to("/"))
                 else:
                     data = response.json()
                     errors = data.get('errors', {})

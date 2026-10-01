@@ -19,7 +19,6 @@ async def load_categories(inventory_id: str) -> dict:
         )
         response.raise_for_status()
         data = response.json()
-        print("RAW INVENTORY API RESPONSE:", data)
         
         if data.get('success'):
             categories = data.get('categories', [])
@@ -32,7 +31,6 @@ async def load_categories(inventory_id: str) -> dict:
                 if cat_id and cat_name:
                     category_dict[cat_id] = cat_name
                     
-            print("PARSED CATEGORY DICT:", category_dict)
             return category_dict
             
         return {}
@@ -230,7 +228,7 @@ async def add_item_page(inventory_id: str):
                     notes_input.value = ""
                     
                     # Redirect after 1.5 seconds
-                    ui.timer(1.5, lambda: ui.navigate(f"/inventory/{inventory_id}"))
+                    ui.timer(1.5, lambda: ui.navigate.to("/"))
                 else:
                     data = response.json()
                     errors = data.get('errors', {})

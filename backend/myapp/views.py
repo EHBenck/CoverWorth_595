@@ -215,7 +215,7 @@ def add_item_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
-
+@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
@@ -242,6 +242,7 @@ def edit_item_api(request, item_id):
                 'item': {
                     'public_id': str(item.public_id),
                     'name': item.name,
+                    'inventory_id': str(item.inventory.public_id),  # <--- Add this line here!
                     'category_id': item.category.id if item.category else None,
                     'description': item.description,
                     'brand': item.brand,
@@ -289,7 +290,7 @@ def edit_item_api(request, item_id):
             'error': str(e),
         }, status=500)
  
- 
+@csrf_exempt
 @require_http_methods(["GET"])
 def inventory_detail_api(request, inventory_id):
     """API endpoint for getting all items in an inventory"""
@@ -334,7 +335,7 @@ def inventory_detail_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
- 
+@csrf_exempt
 @require_http_methods(["GET"])
 def item_detail_api(request, item_id):
     """API endpoint for getting a single item's details"""
