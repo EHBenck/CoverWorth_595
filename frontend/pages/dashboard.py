@@ -20,6 +20,7 @@ async def load_dashboard_data():
             "summary": data.get("summary", {}),
             "category_data": data.get("category_data", []),
             "recent_items": data.get("recent_items", []),
+            "inventory_id": data.get("inventory_id"),
         }
     except requests.RequestException as e:
         print(f"Error loading dashboard: {e}")
@@ -32,6 +33,7 @@ async def load_dashboard_data():
             },
             "category_data": [],
             "recent_items": [],
+            "inventory_id": None,
         }
 
 # ------------------------------------------------------------------
@@ -369,8 +371,9 @@ def recent_items_card() -> None:
 
                     with ui.column().classes("gap-0"):
 
-                        ui.label(
-                            item["name"]
+                        ui.link(
+                            item["name"],
+                            f"/edit-item/{item['public_id']}"
                         ).classes(
                             "text-sm font-semibold"
                         )
@@ -402,7 +405,8 @@ def recent_items_card() -> None:
                         )
 
                     ui.button(
-                        icon="more_vert"
+                        icon="more_vert",
+                        on_click=lambda item_id=item.get('public_id'): ui.navigate.to(f"/edit-item/{item_id}")
                     ).props(
                         "flat round dense color=grey-7"
                     )
@@ -468,6 +472,7 @@ async def dashboard_page():
     dashboard_data = api_data["summary"]
     category_data = api_data["category_data"]
     recent_items = api_data["recent_items"]
+    inventory_id = api_data.get("inventory_id")
 
     # --------------------------------------------------------------
     # SIDEBAR
@@ -634,17 +639,15 @@ async def dashboard_page():
                     "text-base muted"
                 )
 
-            ui.button(
-                "Add Item",
-                icon="add",
-                on_click=lambda: ui.notify(
-                    "Add Item page will be implemented later."
-                ),
-            ).props(
-                "unelevated color=primary no-caps"
-            ).classes(
-                "px-5 py-2 rounded-lg"
-            )
+                ui.button(
+                    "Add Item",
+                    icon="add",
+                    on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+                ).props(
+                    "unelevated color=primary no-caps"
+                ).classes(
+                    "px-5 py-2 rounded-lg"
+                )
 
         # ----------------------------------------------------------
         # SUMMARY CARDS

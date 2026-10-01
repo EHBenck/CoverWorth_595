@@ -1,11 +1,23 @@
+import json
 from decimal import Decimal
-
 from django.http import JsonResponse
+from h11 import Response
+from myapp.models import Category, Inventory, Item
+from myapp.forms import ItemForm
+from django.views.decorators.http import require_http_methods
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.models import User
+from django.views.decorators.csrf import csrf_exempt
 
-from myapp.models import Item
 
-
+@csrf_exempt
 def dashboard_summary(request):
+    try:
+        user = User.objects.get(username='testuser')
+    except User.DoesNotExist:
+        return Response({"error": "testuser not found. Please create it in the admin panel."}, status=404)
+    user_inventory = Inventory.objects.filter(owner=user, archived_at__isnull=True).first()
+    inventory_id = str(user_inventory.public_id) if user_inventory else None
     items = (
         Item.objects
         .select_related("category")
@@ -85,6 +97,7 @@ def dashboard_summary(request):
         },
         "category_data": category_data,
         "recent_items": recent_items,
+        "inventory_id": inventory_id,
     }
 
     return JsonResponse(payload)
@@ -137,3 +150,232 @@ def item_list(request):
     }
 
     return JsonResponse(payload)
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def add_item_api(request, inventory_id):
+    """API endpoint for adding a new item to an inventory"""
+    try:
+        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        # Get the inventory and check ownership
+        inventory = get_object_or_404(Inventory, public_id=inventory_id)
+        
+        if inventory.owner != current_user:
+            return JsonResponse(
+                {'success': False, 'error': 'You can only add items to your own inventory.'},
+                status=403
+            )
+        
+        if request.method == 'GET':
+            categories = Category.objects.filter(
+                inventory=inventory,
+                archived_at__isnull=True,
+            ).values('id', 'name') # Make sure to grab id and name
+
+            return JsonResponse({
+                'success': True,
+                'inventory': {
+                    'public_id': inventory.public_id,
+                    'name': inventory.name,
+                },
+                'categories': list(categories),
+            })
+        
+        if request.method == 'POST':
+            # Parse form data from NiceGUI
+            try:
+                data = request.POST
+            except:
+                data = json.loads(request.body)
+            
+            # Create form with data
+            form = ItemForm(inventory, data)
+            
+            if form.is_valid():
+                item = form.save(commit=False)
+                item.inventory = inventory
+                item.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Item '{item.name}' added successfully!",
+                    'item_id': str(item.public_id),
+                })
+            else:
+                # Return form errors
+                errors = {field: error[0] for field, error in form.errors.items()}
+                return JsonResponse({
+                    'success': False,
+                    'errors': errors,
+                }, status=400)
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        }, status=500)
+ 
+
+@require_http_methods(["GET", "POST"])
+def edit_item_api(request, item_id):
+    """API endpoint for editing an existing item"""
+    try:
+        # Get the item and check ownership
+        item = get_object_or_404(Item, public_id=item_id)
+        
+        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        if item.inventory.owner != current_user:
+            return JsonResponse(
+                {'success': False, 'error': 'You can only edit items in your own inventory.'},
+                status=403
+            )
+        
+        if request.method == 'GET':
+            # Return item data and available categories
+            categories = Category.objects.filter(
+                inventory=item.inventory,
+                archived_at__isnull=True,
+            ).values('id', 'public_id', 'name')
+            
+            return JsonResponse({
+                'success': True,
+                'item': {
+                    'public_id': str(item.public_id),
+                    'name': item.name,
+                    'category_id': item.category.id if item.category else None,
+                    'description': item.description,
+                    'brand': item.brand,
+                    'model_number': item.model_number,
+                    'serial_number': item.serial_number,
+                    'condition': item.condition,
+                    'quantity': item.quantity,
+                    'purchase_date': item.purchase_date.isoformat() if item.purchase_date else None,
+                    'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
+                    'manual_value': str(item.manual_value) if item.manual_value else None,
+                    'notes': item.notes,
+                },
+                'categories': list(categories),
+            })
+        
+        if request.method == 'POST':
+            # Parse form data from NiceGUI
+            try:
+                data = request.POST
+            except:
+                data = json.loads(request.body)
+            
+            # Create form with data and instance
+            form = ItemForm(item.inventory, data, instance=item)
+            
+            if form.is_valid():
+                form.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Item '{item.name}' updated successfully!",
+                    'item_id': str(item.public_id),
+                })
+            else:
+                # Return form errors
+                errors = {field: error[0] for field, error in form.errors.items()}
+                return JsonResponse({
+                    'success': False,
+                    'errors': errors,
+                }, status=400)
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        }, status=500)
+ 
+ 
+@require_http_methods(["GET"])
+def inventory_detail_api(request, inventory_id):
+    """API endpoint for getting all items in an inventory"""
+    try:
+        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        inventory = get_object_or_404(Inventory, public_id=inventory_id)
+        
+        if inventory.owner != current_user:
+            return JsonResponse(
+                {'success': False, 'error': 'You don\'t have access to this inventory.'},
+                status=403
+            )
+        
+        items = inventory.items.filter(archived_at__isnull=True).order_by('-updated_at')
+        
+        items_data = [
+            {
+                'public_id': str(item.public_id),
+                'name': item.name,
+                'category': item.category.name if item.category else 'Uncategorized',
+                'condition': item.get_condition_display(),
+                'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
+                'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
+                'manual_value': str(item.manual_value) if item.manual_value else None,
+            }
+            for item in items
+        ]
+        
+        return JsonResponse({
+            'success': True,
+            'inventory': {
+                'public_id': str(inventory.public_id),
+                'name': inventory.name,
+                'description': inventory.description,
+            },
+            'items': items_data,
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        }, status=500)
+ 
+ 
+@require_http_methods(["GET"])
+def item_detail_api(request, item_id):
+    """API endpoint for getting a single item's details"""
+    try:
+        item = get_object_or_404(Item, public_id=item_id)
+        
+        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        if item.inventory.owner != current_user:
+            return JsonResponse(
+                {'success': False, 'error': 'You don\'t have access to this item.'},
+                status=403
+            )
+        
+        return JsonResponse({
+            'success': True,
+            'item': {
+                'public_id': str(item.public_id),
+                'name': item.name,
+                'category': item.category.name if item.category else 'Uncategorized',
+                'description': item.description,
+                'brand': item.brand,
+                'model_number': item.model_number,
+                'serial_number': item.serial_number,
+                'condition': item.get_condition_display(),
+                'quantity': item.quantity,
+                'purchase_date': item.purchase_date.isoformat() if item.purchase_date else None,
+                'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
+                'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
+                'manual_value': str(item.manual_value) if item.manual_value else None,
+                'notes': item.notes,
+                'created_at': item.created_at.isoformat(),
+                'updated_at': item.updated_at.isoformat(),
+            },
+            'inventory': {
+                'public_id': str(item.inventory.public_id),
+                'name': item.inventory.name,
+            },
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        }, status=500)
