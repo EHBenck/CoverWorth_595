@@ -14,7 +14,7 @@ async def load_categories(inventory_id: str) -> dict:
         
     try:
         response = requests.get(
-            f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",  # <--- Add /add-item/ here
+            f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
             timeout=5
         )
         response.raise_for_status()
@@ -122,7 +122,7 @@ async def add_item_page(inventory_id: str):
                 description_input = ui.textarea(
                     label="Description",
                     placeholder="Add any details about this item"
-                ).classes("w-full h-24")
+                ).classes("w-full").props("rows=3")
                 
                 # Brand
                 brand_input = ui.input(
@@ -174,7 +174,7 @@ async def add_item_page(inventory_id: str):
                 notes_input = ui.textarea(
                     label="Notes",
                     placeholder="Any additional notes"
-                ).classes("w-full h-20")
+                ).classes("w-full").props("rows=3")
         
         # Submit button
         async def submit_form():

@@ -236,96 +236,99 @@ def stat_card(
                 )
 
 
+selected_categories = {}
+
+@ui.refreshable
 def value_by_category_card() -> None:
+    global selected_categories
+    
+    # Initialize all categories as selected by default if empty
+    if not selected_categories and category_data:
+        selected_categories = {cat["name"]: True for cat in category_data}
 
-    total = sum(category["value"] for category in category_data)
+    # Calculate total of ONLY the currently selected categories
+    active_total = sum(
+        cat["value"] for cat in category_data 
+        if selected_categories.get(cat["name"], True)
+    )
 
-    with ui.card().classes(
-        "dashboard-card w-full p-6 h-full"
-    ):
+    # Explicit shared color palette for both chart slices and legend swatches
+    colors = ["#5470c6", "#91cc75", "#334155", "#fac858", "#73c0de", "#3ba272"]
 
-        with ui.row().classes(
-            "w-full items-center justify-between"
-        ):
+    with ui.card().classes("dashboard-card w-full p-6 h-full"):
+        
+        # Header
+        with ui.row().classes("w-full items-center justify-between mb-2"):
+            ui.label("Value by Category").classes("section-title")
+            ui.button(icon="more_vert").props("flat round dense color=grey-7")
 
-            ui.label("Value by Category").classes(
-                "section-title"
-            )
+        # Main Layout: Chart on the left, Custom Legend on the right
+        with ui.row().classes("w-full items-center justify-between gap-4"):
+            
+            # Chart container with center text overlay
+            with ui.element('div').classes("relative w-[55%] h-[300px]"):
+                
+                # Build chart data with explicit matching colors
+                chart_data = [
+                    {
+                        "value": cat["value"] if selected_categories.get(cat["name"], True) else 0,
+                        "name": cat["name"],
+                        "itemStyle": {"color": colors[idx % len(colors)]}
+                    }
+                    for idx, cat in enumerate(category_data)
+                ]
 
-            ui.button(icon="more_vert").props(
-                "flat round dense color=grey-7"
-            )
-
-        chart_options = {
-            "tooltip": {
-                "trigger": "item",
-                "formatter": "${c} ({d}%)",
-            },
-            "legend": {
-                "orient": "vertical",
-                "right": "3%",
-                "top": "middle",
-                "textStyle": {
-                    "fontSize": 13,
-                },
-            },
-            "series": [
-                {
-                    "name": "Category Value",
-                    "type": "pie",
-                    "radius": ["48%", "72%"],
-                    "center": ["32%", "52%"],
-                    "avoidLabelOverlap": True,
-                    "itemStyle": {
-                        "borderRadius": 3,
-                        "borderColor": "#ffffff",
-                        "borderWidth": 2,
+                chart_options = {
+                    "tooltip": {
+                        "trigger": "item",
+                        "formatter": "{b}: ${c} ({d}%)",
                     },
-                    "label": {
-                        "show": False,
-                    },
-                    "emphasis": {
-                        "label": {
-                            "show": False,
-                        }
-                    },
-                    "data": [
+                    "series": [
                         {
-                            "value": category["value"],
-                            "name": category["name"],
+                            "name": "Category Value",
+                            "type": "pie",
+                            "radius": ["48%", "72%"],
+                            "center": ["50%", "50%"],
+                            "avoidLabelOverlap": True,
+                            "itemStyle": {
+                                "borderColor": "#ffffff",
+                                "borderWidth": 2,
+                            },
+                            "label": {"show": False},
+                            "data": chart_data,
                         }
-                        for category in category_data
                     ],
                 }
-            ],
-            "graphic": [
-                {
-                    "type": "text",
-                    "left": "23%",
-                    "top": "45%",
-                    "style": {
-                        "text": f"${total:,.0f}",
-                        "fontSize": 20,
-                        "fontWeight": "bold",
-                        "fill": "#0f172a",
-                    },
-                },
-                {
-                    "type": "text",
-                    "left": "25%",
-                    "top": "53%",
-                    "style": {
-                        "text": "Total Value",
-                        "fontSize": 12,
-                        "fill": "#64748b",
-                    },
-                },
-            ],
-        }
+                
+                ui.echart(chart_options).classes("w-full h-full absolute inset-0")
+                
+                # Center Text Overlay showing the active sum dynamically
+                with ui.element('div').classes("absolute inset-0 flex flex-col items-center justify-center pointer-events-none"):
+                    ui.label(f"${active_total:,.0f}").classes("text-xl font-bold text-slate-900")
+                    ui.label("Total Value").classes("text-xs text-slate-500")
 
-        ui.echart(chart_options).classes(
-            "w-full h-[330px]"
-        )
+            # Custom Legend using the exact same `colors` array
+            with ui.column().classes("w-[38%] gap-2 justify-center"):
+                ui.label("CATEGORIES").classes("text-xs font-bold text-slate-400 uppercase tracking-wider mb-1")
+                
+                for idx, cat in enumerate(category_data):
+                    name = cat["name"]
+                    is_active = selected_categories.get(name, True)
+                    color = colors[idx % len(colors)]
+                    
+                    def make_click(cat_name=name):
+                        def toggle():
+                            selected_categories[cat_name] = not selected_categories.get(cat_name, True)
+                            value_by_category_card.refresh()
+                        return toggle
+
+                    with ui.row().classes("items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-slate-50 transition-colors").on('click', make_click()):
+                        opacity_class = "opacity-100" if is_active else "opacity-30"
+                        ui.element('div').classes(f"w-3.5 h-3.5 rounded-[3px] {opacity_class}").style(f"background-color: {color};")
+                        
+                        text_class = "text-sm font-medium text-slate-700" if is_active else "text-sm font-medium text-slate-400 line-through"
+                        ui.label(name).classes(text_class)
+
 
 
 def recent_items_card() -> None:

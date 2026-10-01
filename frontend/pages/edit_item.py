@@ -111,7 +111,7 @@ async def edit_item_page(item_id: str):
                     label="Description",
                     value=item.get('description', ''),
                     placeholder="Add any details about this item"
-                ).classes("w-full h-24")
+                ).classes("w-full").props("rows=3")
                 
                 # Brand
                 brand_input = ui.input(
@@ -168,7 +168,7 @@ async def edit_item_page(item_id: str):
                     label="Notes",
                     value=item.get('notes', ''),
                     placeholder="Any additional notes"
-                ).classes("w-full h-20")
+                ).classes("w-full").props("rows=3")
         
         # Submit button
         async def submit_form():
