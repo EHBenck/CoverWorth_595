@@ -1,7 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Item, Category
-
+from .models import Item, Category, Location
 
 class ItemForm(forms.ModelForm):
     """Form for creating and editing items"""
@@ -11,6 +10,7 @@ class ItemForm(forms.ModelForm):
         fields = [
             'name',
             'category',
+            'location',
             'description',
             'brand',
             'model_number',
@@ -47,11 +47,27 @@ class ItemForm(forms.ModelForm):
             inventory=inventory,
             archived_at__isnull=True,
         )
+        self.fields["location"].queryset = Location.objects.filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        )
         # Make fields required
-        self.fields['category'].required = True
-        self.fields['name'].required = True
-        self.fields['purchase_date'].required = True
-        self.fields['purchase_amount'].required = True
+        self.fields["name"].required = True
+        self.fields["category"].required = True
+        self.fields["location"].required = False
+        self.fields["purchase_date"].required = True
+        self.fields["purchase_amount"].required = True
+    
+    def clean_location(self):
+        location = self.cleaned_data.get("location")
+
+        if location is None:
+            return None
+
+        if (location.inventory_id != self.inventory.id or location.archived_at is not None):
+            raise ValidationError("Location must belong to the same inventory as the item.")
+
+        return location
 
     def clean_name(self):
         name = self.cleaned_data.get('name', '').strip()
@@ -81,7 +97,7 @@ class ItemForm(forms.ModelForm):
 
     def clean_quantity(self):
         quantity = self.cleaned_data.get('quantity')
-        if quantity and quantity < 1:
+        if quantity is not None and quantity < 1:
             raise ValidationError("Quantity must be at least 1.")
         return quantity
 
@@ -90,10 +106,10 @@ class ItemForm(forms.ModelForm):
         purchase_amount = cleaned_data.get('purchase_amount')
         manual_value = cleaned_data.get('manual_value')
         
-        if purchase_amount and purchase_amount < 0:
+        if purchase_amount is not None and purchase_amount < 0:
             raise ValidationError("Purchase amount cannot be negative.")
         
-        if manual_value and manual_value < 0:
+        if manual_value is not None and manual_value < 0:
             raise ValidationError("Manual value cannot be negative.")
             
         # If manual valuation is left blank, default it to the purchase amount

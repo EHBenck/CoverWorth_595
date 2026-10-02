@@ -1,4 +1,5 @@
 import json
+import logging
 from decimal import Decimal
 
 from django.contrib.auth import authenticate, login, logout
@@ -6,10 +7,12 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
+from django.utils import timezone
 
 from myapp.forms import ItemForm
 from myapp.models import Category, Inventory, Item
 
+logger = logging.getLogger(__name__)
 
 @ensure_csrf_cookie
 def auth_csrf(request):
@@ -269,6 +272,59 @@ def add_item_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
+@require_POST
+def archive_item_api(request, item_id):
+    # Soft-delete an item by archiving it.
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    item = (
+        Item.objects
+        .select_related("inventory")
+        .filter(
+            public_id=item_id,
+            archived_at__isnull=True,
+        )
+        .first()
+    )
+
+    if item is None:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Active item not found.",
+            },
+            status=404,
+        )
+
+    if item.inventory.owner != request.user:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "You don't have access to this item.",
+            },
+            status=403,
+        )
+
+    item.archived_at = timezone.now()
+    item.save(
+        update_fields=[
+            "archived_at",
+            "updated_at",
+        ]
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"Item '{item.name}' archived successfully.",
+            "item_id": str(item.public_id),
+        }
+    )
+
 @require_http_methods(["GET", "POST"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
@@ -276,8 +332,23 @@ def edit_item_api(request, item_id):
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
-        # Get the item and check ownership
-        item = get_object_or_404(Item, public_id=item_id)
+        item = (
+            Item.objects.select_related('inventory')
+            .filter(
+                public_id=item_id,
+                archived_at__isnull=True,
+            )
+            .first()
+        )
+
+        if item is None:
+            return JsonResponse(
+                {
+                    'success': False,
+                    'error': 'Item not found.',
+                },
+                status=404,
+            )
         
         current_user = request.user
         if item.inventory.owner != current_user:
@@ -393,14 +464,25 @@ def inventory_detail_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "DELETE"])
 def item_detail_api(request, item_id):
     """API endpoint for getting a single item's details"""
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
-        item = get_object_or_404(Item, public_id=item_id)
+        items = Item.objects.select_related('inventory','category',)
+        if request.method == "GET":
+            items = items.filter(archived_at__isnull=True)
+        item = items.filter(public_id=item_id).first()
+        if item is None:
+            return JsonResponse(
+                {
+                    'success': False,
+                    'error': 'Item not found.',
+                },
+                status=404
+            )
 
         current_user = request.user
         if item.inventory.owner != current_user:
@@ -409,6 +491,35 @@ def item_detail_api(request, item_id):
                 status=403
             )
         
+        # Hard delete
+        if request.method == "DELETE":
+            item_name = item.name
+            item_id_string = str(item.public_id)
+
+            attachment_files = [(attachment.file.storage, attachment.file.name,)
+            for attachment in item.attachments.all()
+            if attachment.file and attachment.file.name]
+
+            # Deletes Item and related database records through CASCADE
+            item.delete()
+    
+            # Delete actual uploaded files
+            for storage, file_name in attachment_files:
+                try:
+                    storage.delete(file_name)
+                except Exception:
+                    logger.exception("Failed to delete attachment file %s for item %s",
+                    file_name,
+                    item_id_string,
+                    )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"Item '{item_name}' permanently deleted.",
+                'item_id': item_id_string,
+            })
+
+        # GET response
         return JsonResponse({
             'success': True,
             'item': {

@@ -69,6 +69,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path('api/inventory/<uuid:inventory_id>/', views.inventory_detail_api, name='inventory_detail_api'),
     path('api/inventory/<uuid:inventory_id>/add-item/', views.add_item_api, name='add_item_api'),
+    path('api/item/<uuid:item_id>/archive/', views.archive_item_api,name='archive_item_api'),
     path('api/item/<uuid:item_id>/', views.item_detail_api, name='item_detail_api'),
     path('api/item/<uuid:item_id>/edit/', views.edit_item_api, name='edit_item_api'),
     path("api/health/", health_check, name="health-check"),

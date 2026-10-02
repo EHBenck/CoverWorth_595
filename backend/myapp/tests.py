@@ -1,10 +1,16 @@
+import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from myapp.models import Category, Inventory, Item
-
+from myapp.models import (
+    Category,
+    Inventory,
+    Item,
+    ValuationRun,
+    ValuationSourceResult,
+)
 
 User = get_user_model()
 
@@ -294,3 +300,250 @@ class AuthenticationAPITestCase(TestCase):
         response = self.client.get("/api/auth/login/")
 
         self.assertEqual(response.status_code, 405)
+
+class ItemDeletionAPITestCase(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="delete-user",
+            password="secret",
+        )
+
+        self.client.force_login(self.user)
+
+        self.inventory = Inventory.objects.create(
+            owner=self.user,
+            name="Delete test inventory",
+        )
+
+        self.item = Item.objects.create(
+            inventory=self.inventory,
+            name="Camera",
+            purchase_amount=Decimal("900.00"),
+            manual_value=Decimal("700.00"),
+        )
+
+
+    def test_archive_soft_deletes_item(self):
+        response = self.client.post(
+            f"/api/item/{self.item.public_id}/archive/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.item.refresh_from_db()
+
+        # Soft delete means the row remains.
+        self.assertIsNotNone(
+            self.item.archived_at
+        )
+
+        self.assertTrue(
+            Item.objects.filter(
+                pk=self.item.pk
+            ).exists()
+        )
+
+        # But it disappears from Inventory.
+        items_response = self.client.get(
+            "/api/items/"
+        )
+
+        self.assertEqual(
+            items_response.json()["items"],
+            [],
+        )
+
+        # And disappears from Dashboard totals.
+        dashboard_response = self.client.get(
+            "/api/dashboard/"
+        )
+
+        self.assertEqual(
+            dashboard_response.json()
+            ["summary"]
+            ["total_items"],
+            0,
+        )
+
+        self.assertEqual(
+            dashboard_response.json()
+            ["summary"]
+            ["estimated_value"],
+            0,
+        )
+
+
+    def test_archiving_an_already_archived_item_returns_404(self):
+
+        first_response = self.client.post(
+            f"/api/item/{self.item.public_id}/archive/"
+        )
+
+        second_response = self.client.post(
+            f"/api/item/{self.item.public_id}/archive/"
+        )
+
+        self.assertEqual(
+            first_response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            second_response.status_code,
+            404,
+        )
+
+
+    def test_permanent_delete_removes_item_and_related_rows(self):
+
+        valuation = ValuationRun.objects.create(
+            item=self.item,
+            requested_by=self.user,
+        )
+
+        source_result = ValuationSourceResult.objects.create(
+            valuation_run=valuation,
+            source="test-source",
+        )
+
+        item_pk = self.item.pk
+        valuation_pk = valuation.pk
+        source_result_pk = source_result.pk
+
+        response = self.client.delete(
+            f"/api/item/{self.item.public_id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        # Actual Item record is gone.
+        self.assertFalse(
+            Item.objects.filter(
+                pk=item_pk
+            ).exists()
+        )
+
+        # ValuationRun CASCADE worked.
+        self.assertFalse(
+            ValuationRun.objects.filter(
+                pk=valuation_pk
+            ).exists()
+        )
+
+        # ValuationSourceResult CASCADE worked.
+        self.assertFalse(
+            ValuationSourceResult.objects.filter(
+                pk=source_result_pk
+            ).exists()
+        )
+
+
+    def test_permanent_delete_can_remove_archived_item(self):
+
+        archive_response = self.client.post(
+            f"/api/item/{self.item.public_id}/archive/"
+        )
+
+        self.assertEqual(
+            archive_response.status_code,
+            200,
+        )
+
+        delete_response = self.client.delete(
+            f"/api/item/{self.item.public_id}/"
+        )
+
+        self.assertEqual(
+            delete_response.status_code,
+            200,
+        )
+
+        self.assertFalse(
+            Item.objects.filter(
+                pk=self.item.pk
+            ).exists()
+        )
+
+
+    def test_invalid_permanent_delete_returns_404(self):
+
+        response = self.client.delete(
+            f"/api/item/{uuid.uuid4()}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+
+    def test_user_cannot_archive_or_delete_another_users_item(self):
+
+        other_user = User.objects.create_user(
+            username="other-user",
+            password="secret",
+        )
+
+        other_inventory = Inventory.objects.create(
+            owner=other_user,
+            name="Other inventory",
+        )
+
+        other_item = Item.objects.create(
+            inventory=other_inventory,
+            name="Other camera",
+        )
+
+        archive_response = self.client.post(
+            f"/api/item/{other_item.public_id}/archive/"
+        )
+
+        delete_response = self.client.delete(
+            f"/api/item/{other_item.public_id}/"
+        )
+
+        self.assertEqual(
+            archive_response.status_code,
+            403,
+        )
+
+        self.assertEqual(
+            delete_response.status_code,
+            403,
+        )
+
+        self.assertTrue(
+            Item.objects.filter(
+                pk=other_item.pk
+            ).exists()
+        )
+
+
+    def test_archive_and_delete_require_authentication(self):
+
+        self.client.logout()
+
+        archive_response = self.client.post(
+            f"/api/item/{self.item.public_id}/archive/"
+        )
+
+        delete_response = self.client.delete(
+            f"/api/item/{self.item.public_id}/"
+        )
+
+        self.assertEqual(
+            archive_response.status_code,
+            401,
+        )
+
+        self.assertEqual(
+            delete_response.status_code,
+            401,
+        )
