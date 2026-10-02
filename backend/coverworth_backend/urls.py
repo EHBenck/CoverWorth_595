@@ -67,7 +67,14 @@ def home(request):
 urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
+    path('api/inventory/<uuid:inventory_id>/', views.inventory_detail_api, name='inventory_detail_api'),
+    path('api/inventory/<uuid:inventory_id>/add-item/', views.add_item_api, name='add_item_api'),
+    path('api/item/<uuid:item_id>/', views.item_detail_api, name='item_detail_api'),
+    path('api/item/<uuid:item_id>/edit/', views.edit_item_api, name='edit_item_api'),
     path("api/health/", health_check, name="health-check"),
+    path("api/auth/csrf/", views.auth_csrf, name="auth-csrf"),
+    path("api/auth/login/", views.auth_login, name="auth-login"),
+    path("api/auth/logout/", views.auth_logout, name="auth-logout"),
     path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
     path("api/items/", views.item_list, name="item-list"),
 ]

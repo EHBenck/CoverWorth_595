@@ -18,6 +18,7 @@ class DashboardSummaryAPITestCase(TestCase):
             first_name="Alice",
             last_name="Smith",
         )
+        self.client.force_login(self.user)
 
         self.inventory = Inventory.objects.create(
             owner=self.user,
@@ -201,3 +202,95 @@ class DashboardSummaryAPITestCase(TestCase):
             laptop["estimated_value"],
             1200.0,
         )
+
+    def test_dashboard_and_items_require_authentication(self):
+        self.client.logout()
+
+        dashboard_response = self.client.get("/api/dashboard/")
+        items_response = self.client.get("/api/items/")
+
+        self.assertEqual(dashboard_response.status_code, 401)
+        self.assertEqual(items_response.status_code, 401)
+
+    def test_inventory_and_item_endpoints_require_authentication(self):
+        item = Item.objects.first()
+        self.client.logout()
+
+        paths = [
+            f"/api/inventory/{self.inventory.public_id}/",
+            f"/api/inventory/{self.inventory.public_id}/add-item/",
+            f"/api/item/{item.public_id}/",
+            f"/api/item/{item.public_id}/edit/",
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 401)
+
+    def test_dashboard_only_returns_authenticated_users_inventory(self):
+        another_user = User.objects.create_user(
+            username="bob",
+            email="bob@example.com",
+            password="another-secret",
+        )
+        another_inventory = Inventory.objects.create(
+            owner=another_user,
+            name="Bob inventory",
+        )
+        Item.objects.create(
+            inventory=another_inventory,
+            name="Bob's item",
+            manual_value=Decimal("9999.00"),
+        )
+
+        response = self.client.get("/api/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["summary"]["total_items"], 3)
+        self.assertEqual(
+            response.json()["summary"]["estimated_value"],
+            2100.0,
+        )
+
+
+class AuthenticationAPITestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="alice",
+            password="correct-secret",
+        )
+
+    def test_login_accepts_valid_credentials(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            data={"username": "alice", "password": "correct-secret"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["authenticated"])
+        self.assertTrue(self.client.get("/api/dashboard/").wsgi_request.user.is_authenticated)
+
+    def test_login_rejects_invalid_credentials(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            data={"username": "alice", "password": "wrong-secret"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("error", response.json())
+
+    def test_logout_clears_the_authenticated_session(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post("/api/auth/logout/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["authenticated"])
+        self.assertEqual(self.client.get("/api/dashboard/").status_code, 401)
+
+    def test_login_requires_post(self):
+        response = self.client.get("/api/auth/login/")
+
+        self.assertEqual(response.status_code, 405)
