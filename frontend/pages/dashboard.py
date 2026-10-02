@@ -703,15 +703,15 @@ async def dashboard_page():
                     "text-base muted"
                 )
 
-                ui.button(
-                    "Add Item",
-                    icon="add",
-                    on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
-                ).props(
-                    "unelevated color=primary no-caps"
-                ).classes(
-                    "px-5 py-2 rounded-lg"
-                )
+            ui.button(
+                "Add Item",
+                icon="add",
+                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+            ).props(
+                "unelevated color=primary no-caps"
+            ).classes(
+                "px-5 py-2 rounded-lg"
+            )
 
         # ----------------------------------------------------------
         # SUMMARY CARDS
