@@ -1,10 +1,8 @@
 from django.template import response
 import requests
-import os
-from nicegui import ui
+from nicegui import app, ui
 from datetime import datetime
-
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 
 
 async def load_categories(inventory_id: str) -> dict:
@@ -13,7 +11,7 @@ async def load_categories(inventory_id: str) -> dict:
         return {}
         
     try:
-        response = requests.get(
+        response = authenticated_session().get(
             f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
             timeout=5
         )
@@ -42,6 +40,10 @@ async def load_categories(inventory_id: str) -> dict:
 @ui.page("/add-item/{inventory_id}")
 async def add_item_page(inventory_id: str):
     """Page for adding a new item to an inventory"""
+
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
     
     # Load categories
     categories = await load_categories(inventory_id)
@@ -203,9 +205,11 @@ async def add_item_page(inventory_id: str):
             }
             
             try:
-                response = requests.post(
+                session = authenticated_session()
+                response = session.post(
                     f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
                     data=form_data,
+                    headers=csrf_headers(session),
                     timeout=10
                 )
                 

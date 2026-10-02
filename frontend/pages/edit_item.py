@@ -1,15 +1,13 @@
 import requests
-import os
-from nicegui import ui
+from nicegui import app, ui
 from datetime import datetime
-
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 
 
 async def load_item_data(item_id: str) -> dict:
     """Fetch item data and available categories"""
     try:
-        response = requests.get(
+        response = authenticated_session().get(
             f"{BACKEND_URL}/api/item/{item_id}/edit/",
             timeout=5
         )
@@ -29,6 +27,10 @@ async def load_item_data(item_id: str) -> dict:
 @ui.page("/edit-item/{item_id}")
 async def edit_item_page(item_id: str):
     """Page for editing an existing item"""
+
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
     
     # Load item data
     data = await load_item_data(item_id)
@@ -197,9 +199,11 @@ async def edit_item_page(item_id: str):
             }
             
             try:
-                response = requests.post(
+                session = authenticated_session()
+                response = session.post(
                     f"{BACKEND_URL}/api/item/{item_id}/edit/",
                     data=form_data,
+                    headers=csrf_headers(session),
                     timeout=10
                 )
                 

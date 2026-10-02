@@ -1,27 +1,73 @@
 import json
 from decimal import Decimal
+
+from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
-from h11 import Response
-from myapp.models import Category, Inventory, Item
-from myapp.forms import ItemForm
-from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404
-from django.contrib.auth.models import User
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_http_methods, require_POST
+
+from myapp.forms import ItemForm
+from myapp.models import Category, Inventory, Item
 
 
-@csrf_exempt
-def dashboard_summary(request):
+@ensure_csrf_cookie
+def auth_csrf(request):
+    return JsonResponse({"detail": "CSRF cookie set"})
+
+
+@require_POST
+def auth_login(request):
     try:
-        user = User.objects.get(username='testuser')
-    except User.DoesNotExist:
-        return Response({"error": "testuser not found. Please create it in the admin panel."}, status=404)
-    user_inventory = Inventory.objects.filter(owner=user, archived_at__isnull=True).first()
+        credentials = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(credentials, dict):
+        return JsonResponse({"error": "Username and password are required."}, status=400)
+
+    username = credentials.get("username", "")
+    password = credentials.get("password", "")
+    if (
+        not isinstance(username, str)
+        or not isinstance(password, str)
+        or not username
+        or not password
+    ):
+        return JsonResponse({"error": "Username and password are required."}, status=400)
+
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return JsonResponse({"error": "Invalid username or password."}, status=401)
+
+    login(request, user)
+    return JsonResponse({"authenticated": True, "username": user.get_username()})
+
+
+@require_POST
+def auth_logout(request):
+    logout(request)
+    return JsonResponse({"authenticated": False})
+
+
+def dashboard_summary(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    user = request.user
+    user_inventory = Inventory.objects.filter(
+        owner=user,
+        archived_at__isnull=True,
+    ).first()
     inventory_id = str(user_inventory.public_id) if user_inventory else None
+
     items = (
         Item.objects
         .select_related("category")
-        .filter(archived_at__isnull=True)
+        .filter(
+            inventory__owner=request.user,
+            archived_at__isnull=True,
+        )
         .order_by("-updated_at")
     )
 
@@ -104,6 +150,9 @@ def dashboard_summary(request):
 
 
 def item_list(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
     items = (
         Item.objects
         .select_related(
@@ -111,7 +160,10 @@ def item_list(request):
             "category",
             "location",
         )
-        .filter(archived_at__isnull=True)
+        .filter(
+            inventory__owner=request.user,
+            archived_at__isnull=True,
+        )
         .order_by("-updated_at")
     )
 
@@ -151,12 +203,14 @@ def item_list(request):
 
     return JsonResponse(payload)
 
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def add_item_api(request, inventory_id):
     """API endpoint for adding a new item to an inventory"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
     try:
-        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        current_user = request.user
         # Get the inventory and check ownership
         inventory = get_object_or_404(Inventory, public_id=inventory_id)
         
@@ -215,15 +269,17 @@ def add_item_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
     try:
         # Get the item and check ownership
         item = get_object_or_404(Item, public_id=item_id)
         
-        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        current_user = request.user
         if item.inventory.owner != current_user:
             return JsonResponse(
                 {'success': False, 'error': 'You can only edit items in your own inventory.'},
@@ -290,12 +346,14 @@ def edit_item_api(request, item_id):
             'error': str(e),
         }, status=500)
  
-@csrf_exempt
 @require_http_methods(["GET"])
 def inventory_detail_api(request, inventory_id):
     """API endpoint for getting all items in an inventory"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
     try:
-        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+        current_user = request.user
         inventory = get_object_or_404(Inventory, public_id=inventory_id)
         
         if inventory.owner != current_user:
@@ -335,14 +393,16 @@ def inventory_detail_api(request, inventory_id):
             'error': str(e),
         }, status=500)
  
-@csrf_exempt
 @require_http_methods(["GET"])
 def item_detail_api(request, item_id):
     """API endpoint for getting a single item's details"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
     try:
         item = get_object_or_404(Item, public_id=item_id)
-        
-        current_user = request.user if request.user.is_authenticated else User.objects.get(username='testuser')
+
+        current_user = request.user
         if item.inventory.owner != current_user:
             return JsonResponse(
                 {'success': False, 'error': 'You don\'t have access to this item.'},
