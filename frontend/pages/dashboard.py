@@ -218,6 +218,7 @@ ui.add_css("""
 def navigation_item(
     label: str,
     icon: str,
+    route: str | None = None,
     active: bool = False,
 ) -> None:
 
@@ -226,7 +227,13 @@ def navigation_item(
     if active:
         classes += " nav-item-active"
 
-    with ui.row().classes(classes):
+    def Navigate():
+        if route:
+            ui.navigate.to(route)
+        else:
+            ui.notify(f"{label} page has not been implemented yet.")
+
+    with ui.row().classes(classes).on("click", Navigate):
 
         ui.icon(icon).classes("text-xl").style(
             "color: #ffffff !important;"
@@ -580,12 +587,14 @@ async def dashboard_page():
             navigation_item(
                 "Dashboard",
                 "home",
+                route="/",
                 active=True,
             )
 
             navigation_item(
                 "Inventory",
                 "inventory_2",
+                route="/inventory",
             )
 
             navigation_item(
@@ -694,15 +703,15 @@ async def dashboard_page():
                     "text-base muted"
                 )
 
-                ui.button(
-                    "Add Item",
-                    icon="add",
-                    on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
-                ).props(
-                    "unelevated color=primary no-caps"
-                ).classes(
-                    "px-5 py-2 rounded-lg"
-                )
+            ui.button(
+                "Add Item",
+                icon="add",
+                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+            ).props(
+                "unelevated color=primary no-caps"
+            ).classes(
+                "px-5 py-2 rounded-lg"
+            )
 
         # ----------------------------------------------------------
         # SUMMARY CARDS
