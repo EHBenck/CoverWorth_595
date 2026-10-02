@@ -13,5 +13,9 @@ ui.run(
     port=int(os.getenv("NICEGUI_PORT", "8080")),
     title="CoverWorth",
     favicon="📦",
-    reload=True,
+    storage_secret=os.getenv(
+        "NICEGUI_STORAGE_SECRET",
+        "coverworth-development-storage-secret",
+    ),
+    reload=False,
 )

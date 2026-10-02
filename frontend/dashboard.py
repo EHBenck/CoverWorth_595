@@ -1,30 +1,25 @@
-import os
 import requests
-from nicegui import app, ui
-from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+import os
+from nicegui import ui
 
 
 # COVERWORTH DASHBOARD
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # ------------------------------------------------------------------
 # DATA FETCHING FROM BACKEND
 # ------------------------------------------------------------------
 
-async def load_dashboard_data(cookies):
-    """Fetch dashboard summary using this browser's Django session."""
+async def load_dashboard_data():
+    """Fetch dashboard summary from backend"""
     try:
-        response = authenticated_session(cookies).get(
-            f"{BACKEND_URL}/api/dashboard/",
-            timeout=5,
-        )
-        if response.status_code == 401:
-            return None
+        response = requests.get(f"{BACKEND_URL}/api/dashboard/", timeout=5)
         response.raise_for_status()
         data = response.json()
+        
         return {
             "summary": data.get("summary", {}),
             "category_data": data.get("category_data", []),
             "recent_items": data.get("recent_items", []),
-            "inventory_id": data.get("inventory_id"),
         }
     except requests.RequestException as e:
         print(f"Error loading dashboard: {e}")
@@ -37,61 +32,21 @@ async def load_dashboard_data(cookies):
             },
             "category_data": [],
             "recent_items": [],
-            "inventory_id": None,
         }
 
+# ------------------------------------------------------------------
+# GLOBAL DATA (will be populated from API)
+# ------------------------------------------------------------------
 
-def show_login_page(error_message=""):
-    with ui.column().classes("w-full min-h-screen items-center justify-center p-6"):
-        with ui.card().classes("w-full max-w-md p-8 gap-5"):
-            ui.label("CoverWorth").classes("text-3xl font-bold text-primary")
-            ui.label("Sign in to your account").classes("text-lg")
+dashboard_data = {
+    "total_items": 0,
+    "estimated_value": 0,
+    "purchase_value": 0,
+    "items_needing_attention": 0,
+}
+category_data = []
+recent_items = []
 
-            username = ui.input("Username").props("outlined autocomplete=username").classes("w-full")
-            password = ui.input("Password", password=True).props(
-                "outlined autocomplete=current-password"
-            ).classes("w-full")
-            error = ui.label(error_message).classes("text-negative")
-
-            async def submit_login():
-                session = requests.Session()
-                try:
-                    response = session.post(
-                        f"{BACKEND_URL}/api/auth/login/",
-                        json={"username": username.value, "password": password.value},
-                        headers=csrf_headers(session),
-                        timeout=5,
-                    )
-                    if response.status_code == 401:
-                        error.text = "Invalid username or password."
-                        return
-                    response.raise_for_status()
-                except requests.RequestException:
-                    error.text = "Could not connect to the server. Try again."
-                    return
-
-                app.storage.user["auth_cookies"] = session.cookies.get_dict()
-                app.storage.user["username"] = response.json()["username"]
-                ui.navigate.to("/")
-
-            ui.button("Sign in", on_click=submit_login, icon="login").props(
-                "unelevated color=primary no-caps"
-            ).classes("w-full")
-
-
-async def sign_out():
-    session = authenticated_session()
-    try:
-        response = session.post(
-            f"{BACKEND_URL}/api/auth/logout/",
-            headers=csrf_headers(session),
-            timeout=5,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        ui.notify("The server could not confirm sign-out.", type="negative")
-    app.storage.user.clear()
-    ui.navigate.to("/")
 
 # ------------------------------------------------------------------
 # GLOBAL STYLING
@@ -279,106 +234,99 @@ def stat_card(
                 )
 
 
-@ui.refreshable
-def value_by_category_card(category_data) -> None:
-    selected_categories = app.storage.user.get("selected_categories", {})
-    if not selected_categories and category_data:
-        selected_categories = {cat["name"]: True for cat in category_data}
-        app.storage.user["selected_categories"] = selected_categories
+def value_by_category_card() -> None:
 
-    # Calculate total of ONLY the currently selected categories
-    active_total = sum(
-        cat["value"] for cat in category_data 
-        if selected_categories.get(cat["name"], True)
-    )
+    total = sum(category["value"] for category in category_data)
 
-    # Explicit shared color palette for both chart slices and legend swatches
-    colors = ["#5470c6", "#91cc75", "#334155", "#fac858", "#73c0de", "#3ba272"]
+    with ui.card().classes(
+        "dashboard-card w-full p-6 h-full"
+    ):
 
-    with ui.card().classes("dashboard-card w-full p-6 h-full"):
-        
-        # Header
-        with ui.row().classes("w-full items-center justify-between mb-2"):
-            ui.label("Value by Category").classes("section-title")
-            ui.button(icon="more_vert").props("flat round dense color=grey-7")
+        with ui.row().classes(
+            "w-full items-center justify-between"
+        ):
 
-        # Main Layout: Chart on the left, Custom Legend on the right
-        with ui.row().classes("w-full items-center justify-between gap-4"):
-            
-            # Chart container with center text overlay
-            with ui.element('div').classes("relative w-[55%] h-[300px]"):
-                
-                # Build chart data with explicit matching colors
-                chart_data = [
-                    {
-                        "value": cat["value"] if selected_categories.get(cat["name"], True) else 0,
-                        "name": cat["name"],
-                        "itemStyle": {"color": colors[idx % len(colors)]}
-                    }
-                    for idx, cat in enumerate(category_data)
-                ]
+            ui.label("Value by Category").classes(
+                "section-title"
+            )
 
-                chart_options = {
-                    "tooltip": {
-                        "trigger": "item",
-                        "formatter": "{b}: ${c} ({d}%)",
+            ui.button(icon="more_vert").props(
+                "flat round dense color=grey-7"
+            )
+
+        chart_options = {
+            "tooltip": {
+                "trigger": "item",
+                "formatter": "${c} ({d}%)",
+            },
+            "legend": {
+                "orient": "vertical",
+                "right": "3%",
+                "top": "middle",
+                "textStyle": {
+                    "fontSize": 13,
+                },
+            },
+            "series": [
+                {
+                    "name": "Category Value",
+                    "type": "pie",
+                    "radius": ["48%", "72%"],
+                    "center": ["32%", "52%"],
+                    "avoidLabelOverlap": True,
+                    "itemStyle": {
+                        "borderRadius": 3,
+                        "borderColor": "#ffffff",
+                        "borderWidth": 2,
                     },
-                    "series": [
-                        {
-                            "name": "Category Value",
-                            "type": "pie",
-                            "radius": ["48%", "72%"],
-                            "center": ["50%", "50%"],
-                            "avoidLabelOverlap": True,
-                            "itemStyle": {
-                                "borderColor": "#ffffff",
-                                "borderWidth": 2,
-                            },
-                            "label": {"show": False},
-                            "data": chart_data,
+                    "label": {
+                        "show": False,
+                    },
+                    "emphasis": {
+                        "label": {
+                            "show": False,
                         }
+                    },
+                    "data": [
+                        {
+                            "value": category["value"],
+                            "name": category["name"],
+                        }
+                        for category in category_data
                     ],
                 }
-                
-                ui.echart(chart_options).classes("w-full h-full absolute inset-0")
-                
-                # Center Text Overlay showing the active sum dynamically
-                with ui.element('div').classes("absolute inset-0 flex flex-col items-center justify-center pointer-events-none"):
-                    ui.label(f"${active_total:,.0f}").classes("text-xl font-bold text-slate-900")
-                    ui.label("Total Value").classes("text-xs text-slate-500")
+            ],
+            "graphic": [
+                {
+                    "type": "text",
+                    "left": "23%",
+                    "top": "45%",
+                    "style": {
+                        "text": f"${total:,.0f}",
+                        "fontSize": 20,
+                        "fontWeight": "bold",
+                        "fill": "#0f172a",
+                    },
+                },
+                {
+                    "type": "text",
+                    "left": "25%",
+                    "top": "53%",
+                    "style": {
+                        "text": "Total Value",
+                        "fontSize": 12,
+                        "fill": "#64748b",
+                    },
+                },
+            ],
+        }
 
-            # Custom Legend using the exact same `colors` array
-            with ui.column().classes("w-[38%] gap-2 justify-center"):
-                ui.label("CATEGORIES").classes("text-xs font-bold text-slate-400 uppercase tracking-wider mb-1")
-                
-                for idx, cat in enumerate(category_data):
-                    name = cat["name"]
-                    is_active = selected_categories.get(name, True)
-                    color = colors[idx % len(colors)]
-                    
-                    def make_click(cat_name=name):
-                        def toggle():
-                            updated_selection = dict(
-                                app.storage.user.get("selected_categories", {})
-                            )
-                            updated_selection[cat_name] = not updated_selection.get(
-                                cat_name,
-                                True,
-                            )
-                            app.storage.user["selected_categories"] = updated_selection
-                            value_by_category_card.refresh()
-                        return toggle
-
-                    with ui.row().classes("items-center gap-2.5 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-slate-50 transition-colors").on('click', make_click()):
-                        opacity_class = "opacity-100" if is_active else "opacity-30"
-                        ui.element('div').classes(f"w-3.5 h-3.5 rounded-[3px] {opacity_class}").style(f"background-color: {color};")
-                        
-                        text_class = "text-sm font-medium text-slate-700" if is_active else "text-sm font-medium text-slate-400 line-through"
-                        ui.label(name).classes(text_class)
+        ui.echart(chart_options).classes(
+            "w-full h-[330px]"
+        )
 
 
-
-def recent_items_card(recent_items) -> None:
+def recent_items_card() -> None:
 
     with ui.card().classes(
         "dashboard-card w-full p-6 h-full"
@@ -421,9 +369,8 @@ def recent_items_card(recent_items) -> None:
 
                     with ui.column().classes("gap-0"):
 
-                        ui.link(
-                            item["name"],
-                            f"/edit-item/{item['public_id']}"
+                        ui.label(
+                            item["name"]
                         ).classes(
                             "text-sm font-semibold"
                         )
@@ -455,8 +402,7 @@ def recent_items_card(recent_items) -> None:
                         )
 
                     ui.button(
-                        icon="more_vert",
-                        on_click=lambda item_id=item.get('public_id'): ui.navigate.to(f"/edit-item/{item_id}")
+                        icon="more_vert"
                     ).props(
                         "flat round dense color=grey-7"
                     )
@@ -465,7 +411,7 @@ def recent_items_card(recent_items) -> None:
                 ui.separator()
 
 
-def attention_banner(dashboard_data) -> None:
+def attention_banner() -> None:
 
     with ui.card().classes(
         "attention-card w-full p-5"
@@ -516,21 +462,12 @@ def attention_banner(dashboard_data) -> None:
 
 @ui.page("/")
 async def dashboard_page():
-    cookies = app.storage.user.get("auth_cookies")
-    if not cookies:
-        show_login_page()
-        return
 
-    api_data = await load_dashboard_data(cookies)
-    if api_data is None:
-        app.storage.user.clear()
-        show_login_page("Your session expired. Please sign in again.")
-        return
-
+    global dashboard_data, recent_items, category_data
+    api_data = await load_dashboard_data()
     dashboard_data = api_data["summary"]
     category_data = api_data["category_data"]
     recent_items = api_data["recent_items"]
-    inventory_id = api_data.get("inventory_id")
 
     # --------------------------------------------------------------
     # SIDEBAR
@@ -658,12 +595,16 @@ async def dashboard_page():
             "ml-2"
         )
 
-        ui.label(app.storage.user.get("username", "User")).classes(
+        ui.label(
+            "Kevin M."
+        ).classes(
             "font-medium hidden md:block"
         )
 
-        ui.button("Sign out", on_click=sign_out, icon="logout").props(
-            "flat no-caps color=grey-8"
+        ui.button(
+            icon="keyboard_arrow_down"
+        ).props(
+            "flat round dense color=grey-8"
         )
 
     # --------------------------------------------------------------
@@ -693,15 +634,17 @@ async def dashboard_page():
                     "text-base muted"
                 )
 
-                ui.button(
-                    "Add Item",
-                    icon="add",
-                    on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
-                ).props(
-                    "unelevated color=primary no-caps"
-                ).classes(
-                    "px-5 py-2 rounded-lg"
-                )
+            ui.button(
+                "Add Item",
+                icon="add",
+                on_click=lambda: ui.notify(
+                    "Add Item page will be implemented later."
+                ),
+            ).props(
+                "unelevated color=primary no-caps"
+            ).classes(
+                "px-5 py-2 rounded-lg"
+            )
 
         # ----------------------------------------------------------
         # SUMMARY CARDS
@@ -748,19 +691,24 @@ async def dashboard_page():
             "gap-4 max-lg:grid-cols-1"
         ):
 
-            value_by_category_card(category_data)
+            value_by_category_card()
 
-            recent_items_card(recent_items)
+            recent_items_card()
 
         # ----------------------------------------------------------
         # ATTENTION / REVIEW BANNER
         # ----------------------------------------------------------
 
-        attention_banner(dashboard_data)
+        attention_banner()
 
 
+# ------------------------------------------------------------------
+# START NICEGUI
+# ------------------------------------------------------------------
 
-
-
-
-
+ui.run(
+    title="CoverWorth",
+    favicon="📦",
+    port=8080,
+    reload=True,
+)
