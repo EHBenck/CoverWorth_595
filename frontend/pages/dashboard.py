@@ -5,6 +5,7 @@ from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 
 
 # COVERWORTH DASHBOARD
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # ------------------------------------------------------------------
 # DATA FETCHING FROM BACKEND
 # ------------------------------------------------------------------
