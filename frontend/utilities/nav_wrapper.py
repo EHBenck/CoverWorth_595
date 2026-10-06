@@ -105,7 +105,7 @@ def build_app_shell(
         with ui.column().classes("w-full px-3 gap-2"):
             _navigation_item("Dashboard", "home", "/", active_page == "Dashboard")
             _navigation_item("Inventory", "inventory_2", "/inventory", active_page == "Inventory")
-            _navigation_item("Collections", "folder", active=active_page == "Collections")
+            _navigation_item("Categories", "folder", "/categories", active_page == "Categories")
             _navigation_item("Valuations", "analytics", "/valuations", active_page == "Valuations")
             _navigation_item("Reports", "description", "/reports", active_page == "Reports")
             ui.separator().classes("my-3 opacity-20")
