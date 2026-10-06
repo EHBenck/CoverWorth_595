@@ -1,11 +1,13 @@
 from nicegui import ui
+from utilities.nav_wrapper import build_app_shell
+from utilities.inventory_table import add_view_mode_toggle, render_data_table
 
 
 
 # COVERWORTH - INVENTORY PAGE
 # ------------------------------------------------------------
 # Mock data is used for now.
-# Later this can be replaced with data returned by Django.
+# Later will be replaced with live backend data.
 
 
 
@@ -87,8 +89,6 @@ INVENTORY_ITEMS = [
 
 
 # STYLING
-
-
 ui.add_css("""
     body {
         background: #f4f7fb;
@@ -102,72 +102,8 @@ ui.add_css("""
 
 
     /* ========================================================
-       SIDEBAR
-       ======================================================== */
-
-    .sidebar {
-        background: linear-gradient(
-            180deg,
-            #173653 0%,
-            #183c5d 100%
-        );
-
-        color: white;
-    }
-
-    .sidebar-logo {
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: -0.3px;
-    }
-
-    .nav-item {
-        width: 100%;
-        min-height: 48px;
-
-        border-radius: 8px;
-
-        color: #dbeafe;
-
-        padding: 0 14px;
-
-        cursor: pointer;
-    }
-
-    .nav-item:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    .nav-item-active {
-        background: #1769c2;
-        color: white;
-    }
-
-
-    /* ========================================================
-       HEADER
-       ======================================================== */
-
-    .top-header {
-        background: white;
-        color: #0f172a;
-
-        border-bottom: 1px solid #dce3ec;
-
-        box-shadow: none;
-    }
-
-
-    /* ========================================================
        INVENTORY PAGE
        ======================================================== */
-
-    .inventory-container {
-        width: 100%;
-        max-width: 1500px;
-
-        margin: 0 auto;
-    }
 
     .inventory-card {
         background: white;
@@ -192,51 +128,6 @@ ui.add_css("""
         min-height: 44px;
     }
 
-
-    /* ========================================================
-       TABLE WRAPPER
-       ======================================================== */
-
-    .inventory-table-wrapper {
-        width: 100%;
-        overflow-x: auto;
-    }
-
-    .inventory-table {
-        width: 100%;
-        min-width: 1000px;
-    }
-
-
-    /* ========================================================
-       TABLE GRID
-
-       Columns:
-       1. Checkbox
-       2. Image
-       3. Item Name
-       4. Category
-       5. Estimated Value
-       6. Status
-       7. Actions
-       ======================================================== */
-
-    .inventory-grid {
-        display: grid !important;
-
-        grid-template-columns:
-            50px
-            75px
-            minmax(200px, 1.8fr)
-            minmax(140px, 1fr)
-            minmax(150px, 1fr)
-            minmax(120px, 0.8fr)
-            70px !important;
-
-        align-items: center !important;
-
-        width: 100%;
-    }
 
     .inventory-table.grid-view {
         display: grid;
@@ -302,54 +193,6 @@ ui.add_css("""
         .inventory-table.grid-view {
             grid-template-columns: 1fr;
         }
-    }
-
-
-    /* ========================================================
-       TABLE HEADER
-       ======================================================== */
-
-    .table-header {
-        min-height: 52px;
-
-        padding: 0 12px;
-
-        background: #f8fafc;
-
-        border-bottom: 1px solid #e2e8f0;
-
-        color: #475569;
-
-        font-size: 13px;
-        font-weight: 600;
-    }
-
-    .table-header > * {
-        min-width: 0;
-    }
-
-
-    /* ========================================================
-       TABLE ROWS
-       ======================================================== */
-
-    .inventory-row {
-        min-height: 76px;
-
-        padding: 0 12px;
-
-        border-bottom: 1px solid #e2e8f0;
-
-        transition:
-            background-color 0.15s ease;
-    }
-
-    .inventory-row:hover {
-        background: #f8fafc;
-    }
-
-    .inventory-row > * {
-        min-width: 0;
     }
 
 
@@ -421,55 +264,7 @@ ui.add_css("""
 
 
 
-# NAVIGATION COMPONENT
-
-
-def navigation_item(
-    label: str,
-    icon: str,
-    route: str | None = None,
-    active: bool = False,
-) -> None:
-
-    classes = "nav-item items-center gap-3"
-
-    if active:
-        classes += " nav-item-active"
-
-    def navigate():
-
-        if route:
-            ui.navigate.to(route)
-
-        else:
-            ui.notify(
-                f"{label} page has not been implemented yet."
-            )
-
-    with ui.row().classes(
-        classes
-    ).on(
-        "click",
-        navigate,
-    ):
-
-        ui.icon(
-            icon
-        ).classes(
-            "text-xl"
-        )
-
-        ui.label(
-            label
-        ).classes(
-            "text-sm font-medium"
-        )
-
-
-
 # INVENTORY PAGE
-
-
 @ui.page("/inventory")
 def inventory_page():
 
@@ -477,172 +272,15 @@ def inventory_page():
         "Inventory | CoverWorth"
     )
 
-    view_mode = {"value": "grid"}
+    build_app_shell("Inventory")
 
 
-    
-    # SIDEBAR
-    
-
-    with ui.left_drawer(
-        value=True,
-        top_corner=True,
-        bottom_corner=True,
-    ).props(
-        "width=230 breakpoint=800"
-    ).classes(
-        "sidebar p-0"
-    ) as drawer:
-
-
-        # ----------------------------------------------------
-        # LOGO
-        # ----------------------------------------------------
-
-        with ui.row().classes(
-            "w-full items-center gap-3 px-5 py-6"
-        ):
-
-            with ui.element(
-                "div"
-            ).classes(
-                "w-10 h-10 "
-                "bg-blue-500/20 "
-                "rounded-xl "
-                "flex items-center "
-                "justify-center"
-            ):
-
-                ui.icon(
-                    "inventory_2"
-                ).classes(
-                    "text-3xl text-blue-400"
-                )
-
-            ui.label(
-                "CoverWorth"
-            ).classes(
-                "sidebar-logo"
-            )
-
-
-        # ----------------------------------------------------
-        # NAVIGATION
-        # ----------------------------------------------------
-
-        with ui.column().classes(
-            "w-full px-3 gap-2"
-        ):
-
-            navigation_item(
-                "Dashboard",
-                "home",
-                route="/",
-            )
-
-            navigation_item(
-                "Inventory",
-                "inventory_2",
-                route="/inventory",
-                active=True,
-            )
-
-            navigation_item(
-                "Collections",
-                "folder",
-            )
-
-            navigation_item(
-                "Valuations",
-                "analytics",
-            )
-
-            navigation_item(
-                "Reports",
-                "description",
-            )
-
-            ui.separator().classes(
-                "my-3 opacity-20"
-            )
-
-            navigation_item(
-                "Settings",
-                "settings",
-            )
-
-
-    
-    # TOP HEADER
-    
-
-    with ui.header().classes(
-        "top-header h-[68px] "
-        "items-center px-5"
-    ):
-
-        ui.button(
-            icon="menu",
-            on_click=drawer.toggle,
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.space()
-
-        ui.input(
-            placeholder=(
-                "Search items, categories, or locations..."
-            )
-        ).props(
-            "outlined dense rounded "
-            "prepend-icon=search"
-        ).classes(
-            "w-[520px] max-w-[50vw]"
-        )
-
-        ui.space()
-
-        ui.button(
-            icon="notifications_none"
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.avatar(
-            "KM",
-            color="primary",
-            text_color="white",
-        ).classes(
-            "ml-2"
-        )
-
-        ui.label(
-            "Kevin M."
-        ).classes(
-            "font-medium hidden md:block"
-        )
-
-        ui.button(
-            icon="keyboard_arrow_down"
-        ).props(
-            "flat round dense color=grey-8"
-        )
-
-
-    
     # MAIN PAGE CONTENT
-    
-
     with ui.column().classes(
-        "inventory-container p-7 gap-5"
+        "inventory-container page-content-frame p-7 gap-5"
     ):
 
-
-        # ----------------------------------------------------
         # PAGE TITLE
-        # ----------------------------------------------------
-
         with ui.row().classes(
             "w-full items-center justify-between"
         ):
@@ -681,20 +319,12 @@ def inventory_page():
                 "px-5 py-2 rounded-lg"
             )
 
-
-        
         # INVENTORY CARD
-        
-
         with ui.card().classes(
             "inventory-card w-full p-4 gap-4"
         ):
-
-
             
             # FILTER CONTROLS
-            
-
             with ui.row().classes(
                 "w-full "
                 "items-center "
@@ -707,25 +337,7 @@ def inventory_page():
                     inventory_rows.refresh()
 
 
-                def set_view_mode(mode: str):
-                    view_mode["value"] = mode
-                    list_view_button.props(
-                        "outline color=primary"
-                        if mode == "list"
-                        else "flat color=grey-8"
-                    )
-                    grid_view_button.props(
-                        "outline color=primary"
-                        if mode == "grid"
-                        else "flat color=grey-8"
-                    )
-                    refresh_inventory()
-
-
-                # ---------------------------------------------
                 # SEARCH
-                # ---------------------------------------------
-
                 search_input = ui.input(
                     placeholder="Search your inventory...",
                     on_change=lambda _:
@@ -740,11 +352,7 @@ def inventory_page():
                     "flex-1"
                 )
 
-
-                # ---------------------------------------------
                 # CATEGORY FILTER
-                # ---------------------------------------------
-
                 category_filter = ui.select(
                     [
                         "All Categories",
@@ -765,11 +373,7 @@ def inventory_page():
                     "filter-control w-[190px]"
                 )
 
-
-                # ---------------------------------------------
                 # LOCATION FILTER
-                # ---------------------------------------------
-
                 location_filter = ui.select(
                     [
                         "All Locations",
@@ -787,11 +391,7 @@ def inventory_page():
                     "filter-control w-[190px]"
                 )
 
-
-                # ---------------------------------------------
                 # STATUS FILTER
-                # ---------------------------------------------
-
                 status_filter = ui.select(
                     [
                         "All Statuses",
@@ -807,49 +407,15 @@ def inventory_page():
                     "filter-control w-[170px]"
                 )
 
+                view_mode = add_view_mode_toggle(
+                    lambda: inventory_rows.refresh()
+                )
 
-                # ---------------------------------------------
-                # LIST / GRID VIEW
-                # ---------------------------------------------
-
-                with ui.button_group().props(
-                    "flat"
-                ):
-
-                    list_view_button = ui.button(
-                        icon="view_list",
-                        on_click=lambda: set_view_mode("list"),
-                    ).props(
-                        "outline color=primary"
-                        if view_mode["value"] == "list"
-                        else "flat color=grey-8"
-                    ).tooltip(
-                        "List view"
-                    )
-
-                    grid_view_button = ui.button(
-                        icon="grid_view",
-                        on_click=lambda: set_view_mode("grid"),
-                    ).props(
-                        "outline color=primary"
-                        if view_mode["value"] == "grid"
-                        else "flat color=grey-8"
-                    ).tooltip(
-                        "Grid view"
-                    )
-
-
-            
             # INVENTORY TABLE
-            
-
             @ui.refreshable
             def inventory_rows():
 
-                # ---------------------------------------------
                 # CURRENT FILTER VALUES
-                # ---------------------------------------------
-
                 search_text = (
                     search_input.value or ""
                 ).strip().lower()
@@ -866,11 +432,7 @@ def inventory_page():
                     status_filter.value
                 )
 
-
-                # ---------------------------------------------
                 # FILTER ITEMS
-                # ---------------------------------------------
-
                 filtered_items = []
 
                 for item in INVENTORY_ITEMS:
@@ -923,363 +485,109 @@ def inventory_page():
                     )
 
 
-                
-                # TABLE WRAPPER
-                
+                def render_inventory_header():
+                    ui.label("Image")
+                    with ui.row().classes("items-center gap-1"):
+                        ui.label("Item Name")
+                        ui.icon("arrow_upward").classes("text-sm text-blue-600")
+                    ui.label("Category")
+                    with ui.row().classes("items-center gap-1"):
+                        ui.label("Estimated Value")
+                        ui.icon("unfold_more").classes("text-sm")
+                    ui.label("Status")
+                    ui.label("Actions")
 
-                with ui.element(
-                    "div"
-                ).classes(
-                    "inventory-table-wrapper"
-                ):
+                def render_inventory_row(item):
+                    with ui.element("div").classes("item-icon"):
+                        ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 
-                    with ui.element(
-                        "div"
-                    ).classes(
-                        "inventory-table "
-                        + ("grid-view" if view_mode["value"] == "grid" else "")
-                    ):
-
-                        # TABLE HEADER
-                        with ui.element(
-                            "div"
-                        ).classes(
-                            "inventory-grid "
-                            "table-header"
-                        ):
-
-                            # Checkbox
-                            ui.checkbox()
-
-                            # Image
-                            ui.label(
-                                "Image"
-                            )
-
-                            # Item name
-                            with ui.row().classes(
-                                "items-center gap-1"
-                            ):
-
-                                ui.label(
-                                    "Item Name"
-                                )
-
-                                ui.icon(
-                                    "arrow_upward"
-                                ).classes(
-                                    "text-sm "
-                                    "text-blue-600"
-                                )
-
-                            # Category
-                            ui.label(
-                                "Category"
-                            )
-
-                            # Value
-                            with ui.row().classes(
-                                "items-center gap-1"
-                            ):
-
-                                ui.label(
-                                    "Estimated Value"
-                                )
-
-                                ui.icon(
-                                    "unfold_more"
-                                ).classes(
-                                    "text-sm"
-                                )
-
-                            # Status
-                            ui.label(
-                                "Status"
-                            )
-
-                            # Actions
-                            ui.label(
-                                "Actions"
-                            )
-
-
-                        
-                        # EMPTY STATE
-                        
-
-                        if not filtered_items:
-
-                            with ui.column().classes(
-                                "w-full "
-                                "items-center "
-                                "justify-center "
-                                "py-16 "
-                                "gap-2"
-                            ):
-
-                                ui.icon(
-                                    "search_off"
-                                ).classes(
-                                    "text-5xl "
-                                    "text-slate-300"
-                                )
-
-                                ui.label(
-                                    "No items found"
-                                ).classes(
-                                    "text-lg "
-                                    "font-semibold "
-                                    "text-slate-600"
-                                )
-
-                                ui.label(
-                                    "Try changing your "
-                                    "search or filters."
-                                ).classes(
-                                    "text-sm muted"
-                                )
-
-
-                        
-                        # INVENTORY ROWS
-                        
-
-                        for item in filtered_items:
-
-                            with ui.element(
-                                "div"
-                            ).classes(
-                                "inventory-grid "
-                                "inventory-row"
-                            ):
-
-
-                                # --------------------------------
-                                # CHECKBOX
-                                # --------------------------------
-
-                                ui.checkbox()
-
-
-                                # --------------------------------
-                                # IMAGE / ICON
-                                # --------------------------------
-
-                                with ui.element(
-                                    "div"
-                                ).classes(
-                                    "item-icon"
-                                ):
-
-                                    ui.icon(
-                                        item["icon"]
-                                    ).classes(
-                                        "text-2xl "
-                                        "text-slate-600"
-                                    )
-
-
-                                # --------------------------------
-                                # ITEM NAME
-                                # --------------------------------
-
-                                ui.label(
-                                    item["name"]
-                                ).classes(
-                                    "text-sm "
-                                    "font-semibold"
-                                )
-
-
-                                # --------------------------------
-                                # CATEGORY
-                                # --------------------------------
-
-                                ui.label(
-                                    item["category"]
-                                ).classes(
-                                    "text-sm "
-                                    "text-slate-700"
-                                )
-
-
-                                # --------------------------------
-                                # ESTIMATED VALUE
-                                # --------------------------------
-
-                                ui.label(
-                                    f'${item["estimated_value"]:,.0f}'
-                                ).classes(
-                                    "text-sm "
-                                    "font-medium"
-                                )
-
-
-                                # --------------------------------
-                                # STATUS
-                                # --------------------------------
-
-                                if (
-                                    item["status"]
-                                    == "Current"
-                                ):
-
-                                    ui.label(
-                                        "Current"
-                                    ).classes(
-                                        "status-current"
-                                    )
-
-                                else:
-
-                                    ui.label(
-                                        "Review"
-                                    ).classes(
-                                        "status-review"
-                                    )
-
-
-                                # --------------------------------
-                                # ACTION MENU
-                                # --------------------------------
-
-                                with ui.button(
-                                    icon="more_vert"
-                                ).props(
-                                    "flat "
-                                    "round "
-                                    "dense "
-                                    "color=grey-8"
-                                ):
-
-                                    with ui.menu():
-
-                                        ui.menu_item(
-                                            "View Item",
-                                            on_click=(
-                                                lambda item=item:
-                                                ui.notify(
-                                                    f'View '
-                                                    f'{item["name"]}'
-                                                )
-                                            ),
-                                        )
-
-                                        ui.menu_item(
-                                            "Edit",
-                                            on_click=(
-                                                lambda item=item:
-                                                ui.notify(
-                                                    f'Edit '
-                                                    f'{item["name"]}'
-                                                )
-                                            ),
-                                        )
-
-                                        ui.separator()
-
-                                        ui.menu_item(
-                                            "Delete",
-                                            on_click=(
-                                                lambda item=item:
-                                                ui.notify(
-                                                    f'Delete '
-                                                    f'{item["name"]}'
-                                                )
-                                            ),
-                                        )
-
-
-                
-                # TABLE FOOTER
-                
-
-                with ui.row().classes(
-                    "table-footer "
-                    "items-center "
-                    "justify-between"
-                ):
-
-                    ui.label(
-                        f"Showing "
-                        f"{len(filtered_items)} "
-                        f"of "
-                        f"{len(INVENTORY_ITEMS)} "
-                        f"items"
-                    ).classes(
-                        "text-sm muted"
+                    ui.label(item["name"]).classes("text-sm font-semibold")
+                    ui.label(item["category"]).classes("text-sm text-slate-700")
+                    ui.label(f'${item["estimated_value"]:,.0f}').classes(
+                        "text-sm font-medium"
                     )
 
+                    if item["status"] == "Current":
+                        ui.label("Current").classes("status-current")
+                    else:
+                        ui.label("Review").classes("status-review")
 
-                    with ui.row().classes(
-                        "items-center gap-4"
+                    with ui.button(icon="more_vert").props(
+                        "flat round dense color=grey-8"
                     ):
+                        with ui.menu():
+                            ui.menu_item(
+                                "View Item",
+                                on_click=lambda item=item: ui.notify(
+                                    f'View {item["name"]}'
+                                ),
+                            )
+                            ui.menu_item(
+                                "Edit",
+                                on_click=lambda item=item: ui.notify(
+                                    f'Edit {item["name"]}'
+                                ),
+                            )
+                            ui.separator()
+                            ui.menu_item(
+                                "Delete",
+                                on_click=lambda item=item: ui.notify(
+                                    f'Delete {item["name"]}'
+                                ),
+                            )
 
+                def render_inventory_footer():
+                    with ui.row().classes(
+                        "table-footer items-center justify-between"
+                    ):
                         ui.label(
-                            "Rows per page:"
-                        ).classes(
-                            "text-sm muted"
-                        )
+                            f"Showing {len(filtered_items)} "
+                            f"of {len(INVENTORY_ITEMS)} items"
+                        ).classes("text-sm muted")
 
+                        with ui.row().classes("items-center gap-4"):
+                            ui.label("Rows per page:").classes("text-sm muted")
+                            ui.select([8, 16, 24], value=8).props(
+                                "dense borderless"
+                            ).classes("w-16")
 
-                        ui.select(
-                            [
-                                8,
-                                16,
-                                24,
-                            ],
-                            value=8,
-                        ).props(
-                            "dense borderless"
-                        ).classes(
-                            "w-16"
-                        )
+                            if filtered_items:
+                                ui.label(
+                                    f"1–{len(filtered_items)} "
+                                    f"of {len(filtered_items)}"
+                                ).classes("text-sm")
+                            else:
+                                ui.label("0 of 0").classes("text-sm")
 
-
-                        if filtered_items:
-
-                            ui.label(
-                                f"1–"
-                                f"{len(filtered_items)} "
-                                f"of "
-                                f"{len(filtered_items)}"
-                            ).classes(
-                                "text-sm"
+                            ui.button(icon="chevron_left").props(
+                                "flat round disable color=grey-6"
                             )
+                            ui.button(
+                                icon="chevron_right",
+                                on_click=lambda: ui.notify(
+                                    "Pagination will become active when more data is loaded."
+                                ),
+                            ).props("flat round color=primary")
 
-                        else:
-
-                            ui.label(
-                                "0 of 0"
-                            ).classes(
-                                "text-sm"
-                            )
-
-
-                        ui.button(
-                            icon="chevron_left"
-                        ).props(
-                            "flat "
-                            "round "
-                            "disable "
-                            "color=grey-6"
-                        )
-
-
-                        ui.button(
-                            icon="chevron_right",
-                            on_click=lambda:
-                            ui.notify(
-                                "Pagination will become "
-                                "active when more data "
-                                "is loaded."
-                            ),
-                        ).props(
-                            "flat "
-                            "round "
-                            "color=primary"
-                        )
-
+                render_data_table(
+                    filtered_items,
+                    view_mode=view_mode,
+                    grid_columns=(
+                        "50px 75px minmax(200px, 1.8fr) "
+                        "minmax(140px, 1fr) minmax(150px, 1fr) "
+                        "minmax(120px, 0.8fr) 70px"
+                    ),
+                    wrapper_class="inventory-table-wrapper",
+                    table_class="inventory-table",
+                    header_class="inventory-grid table-header",
+                    row_class="inventory-grid inventory-row",
+                    render_header=render_inventory_header,
+                    render_row=render_inventory_row,
+                    empty_icon="search_off",
+                    empty_title="No items found",
+                    empty_description="Try changing your search or filters.",
+                    render_footer=render_inventory_footer,
+                )
 
             # Render table
             inventory_rows()

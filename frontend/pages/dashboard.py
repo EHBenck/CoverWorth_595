@@ -2,6 +2,7 @@ import os
 import requests
 from nicegui import app, ui
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+from utilities.nav_wrapper import build_app_shell
 
 
 # COVERWORTH DASHBOARD
@@ -112,55 +113,6 @@ ui.add_css("""
     }
 
     /* ----------------------------------------------------------
-       Sidebar
-       ---------------------------------------------------------- */
-
-    .sidebar {
-        background: #203756 !important;
-        color: #ffffff;
-    }
-
-    .q-drawer.sidebar,
-    .q-drawer.sidebar .q-drawer__content {
-        background: #203756 !important;
-    }
-
-    .sidebar-logo {
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: -0.3px;
-        color: #ffffff !important;
-    }
-
-    .nav-item {
-        width: 100%;
-        min-height: 48px;
-        border-radius: 8px;
-        color: #ffffff !important;
-        padding: 0 14px;
-    }
-
-    .nav-item:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    .nav-item-active {
-        background: #1769c2;
-        color: white;
-    }
-
-    /* ----------------------------------------------------------
-       Header
-       ---------------------------------------------------------- */
-
-    .q-header.top-header {
-        background-color: #eff5f9 !important;
-        color: #0f172a;
-        border-bottom: 1px solid #dce3ec;
-        box-shadow: none;
-    }
-
-    /* ----------------------------------------------------------
        Cards
        ---------------------------------------------------------- */
 
@@ -202,47 +154,12 @@ ui.add_css("""
         border-radius: 12px;
     }
 
-    /* Makes main content look good on larger screens */
-    .dashboard-container {
-        width: 100%;
-        max-width: 1450px;
-        margin: 0 auto;
-    }
 """, shared=True)
 
 
 # ------------------------------------------------------------------
 # REUSABLE COMPONENTS
 # ------------------------------------------------------------------
-
-def navigation_item(
-    label: str,
-    icon: str,
-    route: str | None = None,
-    active: bool = False,
-) -> None:
-
-    classes = "nav-item items-center gap-3"
-
-    if active:
-        classes += " nav-item-active"
-
-    def Navigate():
-        if route:
-            ui.navigate.to(route)
-        else:
-            ui.notify(f"{label} page has not been implemented yet.")
-
-    with ui.row().classes(classes).on("click", Navigate):
-
-        ui.icon(icon).classes("text-xl").style(
-            "color: #ffffff !important;"
-        )
-
-        ui.label(label).classes("text-sm font-medium").style(
-            "color: #ffffff !important;"
-        )
-
 
 def stat_card(
     title: str,
@@ -540,148 +457,18 @@ async def dashboard_page():
     recent_items = api_data["recent_items"]
     inventory_id = api_data.get("inventory_id")
 
-    # --------------------------------------------------------------
-    # SIDEBAR
-    # --------------------------------------------------------------
-
-    with ui.left_drawer(
-        value=True,
-        top_corner=True,
-        bottom_corner=True,
-    ).props(
-        "width=230 breakpoint=800"
-    ).classes(
-        "sidebar p-0"
-    ).style(
-        "background-color: #203756 !important;"
-    ) as drawer:
-
-        # Logo
-        with ui.row().classes(
-            "w-full items-center gap-3 px-5 py-6"
-        ):
-
-            with ui.element("div").classes(
-                "w-10 h-10 bg-blue-500/20 "
-                "rounded-xl flex items-center justify-center"
-            ):
-                ui.icon(
-                    "inventory_2"
-                ).classes(
-                    "text-3xl text-blue-400"
-                )
-
-            ui.label(
-                "CoverWorth"
-            ).classes(
-                "sidebar-logo"
-            ).style(
-                "color: #ffffff !important;"
-            )
-
-        # Navigation
-        with ui.column().classes(
-            "w-full px-3 gap-2"
-        ):
-
-            navigation_item(
-                "Dashboard",
-                "home",
-                route="/",
-                active=True,
-            )
-
-            navigation_item(
-                "Inventory",
-                "inventory_2",
-                route="/inventory",
-            )
-
-            navigation_item(
-                "Collections",
-                "folder",
-            )
-
-            navigation_item(
-                "Valuations",
-                "analytics",
-            )
-
-            navigation_item(
-                "Reports",
-                "description",
-            )
-
-            ui.separator().classes(
-                "my-3 opacity-20"
-            )
-
-            navigation_item(
-                "Settings",
-                "settings",
-            )
-
-    # --------------------------------------------------------------
-    # HEADER
-    # --------------------------------------------------------------
-
-    with ui.header().classes(
-        "top-header h-[68px] "
-        "items-center px-5"
-    ).style(
-        "background-color: #eff5f9 !important; color: #0f172a !important;"
-    ):
-
-        ui.button(
-            icon="menu",
-            on_click=drawer.toggle,
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.space()
-
-        # Search box
-        ui.input(
-            placeholder="Search items..."
-        ).props(
-            "outlined dense rounded"
-        ).classes(
-            "w-[420px] max-w-[45vw]"
-        ).props(
-            'prepend-icon="search"'
-        )
-
-        ui.space()
-
-        ui.button(
-            icon="notifications_none"
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.avatar(
-            "KM",
-            color="primary",
-            text_color="white",
-        ).classes(
-            "ml-2"
-        )
-
-        ui.label(app.storage.user.get("username", "User")).classes(
-            "font-medium hidden md:block"
-        )
-
-        ui.button("Sign out", on_click=sign_out, icon="logout").props(
-            "flat no-caps color=grey-8"
-        )
+    build_app_shell(
+        "Dashboard",
+        username=app.storage.user.get("username", "User"),
+        on_sign_out=sign_out,
+    )
 
     # --------------------------------------------------------------
     # MAIN DASHBOARD CONTENT
     # --------------------------------------------------------------
 
     with ui.column().classes(
-        "dashboard-container p-7 gap-5"
+        "dashboard-container page-content-frame p-7 gap-5"
     ):
 
         # Dashboard title
@@ -767,10 +554,6 @@ async def dashboard_page():
         # ----------------------------------------------------------
 
         attention_banner(dashboard_data)
-
-
-
-
 
 
 
