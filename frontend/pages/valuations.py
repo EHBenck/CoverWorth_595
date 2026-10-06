@@ -1,6 +1,7 @@
 from nicegui import ui
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
+from utilities.mockdata import AI_PREVIEW, VALUATION_ITEMS
 
 
 # ============================================================
@@ -8,112 +9,11 @@ from utilities.inventory_table import add_view_mode_toggle, render_data_table
 # ------------------------------------------------------------
 # Uses mock data for the frontend implementation.
 #
-# Later:
+# TODO:
 #   - valuation rows can come from the Django API
 #   - "Update" can trigger a valuation endpoint
 #   - AI Valuation Preview can display real market data
 # ============================================================
-
-
-# ============================================================
-# MOCK DATA
-# ============================================================
-
-VALUATION_ITEMS = [
-    {
-        "id": 1,
-        "name": "Canon EOS R6",
-        "category": "Electronics",
-        "location": "Office",
-        "current_value": 1850,
-        "last_updated": "1 day ago",
-        "days_old": 1,
-        "status": "Needs Review",
-        "icon": "photo_camera",
-    },
-    {
-        "id": 2,
-        "name": "Seiko Prospex",
-        "category": "Watches",
-        "location": "Bedroom",
-        "current_value": 725,
-        "last_updated": "9 days ago",
-        "days_old": 9,
-        "status": "Current",
-        "icon": "watch",
-    },
-    {
-        "id": 3,
-        "name": "MacBook Pro",
-        "category": "Electronics",
-        "location": "Office",
-        "current_value": 1290,
-        "last_updated": "14 days ago",
-        "days_old": 14,
-        "status": "Current",
-        "icon": "laptop_mac",
-    },
-    {
-        "id": 4,
-        "name": "Titleist Golf Clubs",
-        "category": "Sports",
-        "location": "Garage",
-        "current_value": 850,
-        "last_updated": "72 days ago",
-        "days_old": 72,
-        "status": "Needs Review",
-        "icon": "sports_golf",
-    },
-    {
-        "id": 5,
-        "name": "Vintage Record Player",
-        "category": "Collectibles",
-        "location": "Living Room",
-        "current_value": 520,
-        "last_updated": "105 days ago",
-        "days_old": 105,
-        "status": "Needs Review",
-        "icon": "album",
-    },
-    {
-        "id": 6,
-        "name": "Leather Couch",
-        "category": "Furniture",
-        "location": "Living Room",
-        "current_value": 2100,
-        "last_updated": "88 days ago",
-        "days_old": 88,
-        "status": "Needs Review",
-        "icon": "chair",
-    },
-]
-
-
-AI_PREVIEW = {
-    "name": "Canon EOS R6",
-    "current_estimate": 1850,
-    "range_low": 1700,
-    "range_high": 2000,
-    "confidence": "High",
-    "sources": [
-        {
-            "name": "B&H Photo",
-            "value": 1899,
-        },
-        {
-            "name": "Amazon",
-            "value": 1750,
-        },
-        {
-            "name": "KEH Camera",
-            "value": 1850,
-        },
-        {
-            "name": "MPB",
-            "value": 1795,
-        },
-    ],
-}
 
 
 # ============================================================

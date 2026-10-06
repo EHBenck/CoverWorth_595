@@ -1,90 +1,14 @@
 from nicegui import ui
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
+from utilities.mockdata import INVENTORY_ITEMS
 
 
 
 # COVERWORTH - INVENTORY PAGE
 # ------------------------------------------------------------
 # Mock data is used for now.
-# Later will be replaced with live backend data.
-
-
-
-INVENTORY_ITEMS = [
-    {
-        "id": 1,
-        "name": "Canon EOS R6",
-        "category": "Electronics",
-        "location": "Office",
-        "estimated_value": 1850,
-        "status": "Current",
-        "icon": "photo_camera",
-    },
-    {
-        "id": 2,
-        "name": "Seiko Prospex",
-        "category": "Watches",
-        "location": "Bedroom",
-        "estimated_value": 725,
-        "status": "Review",
-        "icon": "watch",
-    },
-    {
-        "id": 3,
-        "name": "MacBook Pro",
-        "category": "Electronics",
-        "location": "Office",
-        "estimated_value": 1250,
-        "status": "Current",
-        "icon": "laptop_mac",
-    },
-    {
-        "id": 4,
-        "name": "Lake Painting",
-        "category": "Art",
-        "location": "Living Room",
-        "estimated_value": 475,
-        "status": "Current",
-        "icon": "image",
-    },
-    {
-        "id": 5,
-        "name": "Leather Couch",
-        "category": "Furniture",
-        "location": "Living Room",
-        "estimated_value": 2100,
-        "status": "Current",
-        "icon": "chair",
-    },
-    {
-        "id": 6,
-        "name": "Titleist Golf Clubs",
-        "category": "Sports",
-        "location": "Garage",
-        "estimated_value": 850,
-        "status": "Review",
-        "icon": "sports_golf",
-    },
-    {
-        "id": 7,
-        "name": "Vintage Record Player",
-        "category": "Collectibles",
-        "location": "Living Room",
-        "estimated_value": 620,
-        "status": "Current",
-        "icon": "album",
-    },
-    {
-        "id": 8,
-        "name": "Hiking Backpack",
-        "category": "Outdoor",
-        "location": "Garage",
-        "estimated_value": 220,
-        "status": "Current",
-        "icon": "backpack",
-    },
-]
+# TODO replace with live backend data.
 
 
 
