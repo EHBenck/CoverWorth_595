@@ -115,7 +115,7 @@ def build_app_shell(
         ui.button(icon="menu", on_click=drawer.toggle).props("flat round color=grey-8")
         ui.space()
         ui.input(
-            placeholder="Search items, collections, or categories..."
+            placeholder="Search items, categories, or locations..."
         ).props(
             "outlined dense rounded prepend-icon=search"
         ).classes("w-[520px] max-w-[50vw]")
