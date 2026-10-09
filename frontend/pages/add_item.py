@@ -1,268 +1,706 @@
-from django.template import response
+from datetime import date
+
 import requests
 from nicegui import app, ui
-from datetime import datetime
-from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+
+from backend_client import (
+    BACKEND_URL,
+    authenticated_session,
+    csrf_headers,
+)
+from utilities.nav_wrapper import build_app_shell
+
+ui.add_css(
+    """
+    body {
+        background: #f3f8fb;
+        color: #0f172a;
+        font-family: Inter, Roboto, Arial, sans-serif;
+    }
+
+    .nicegui-content {
+        padding: 0 !important;
+        background-color: #f3f8fb !important;
+    }
+
+    .add-item-container {
+        width: 100%;
+    }
+
+    .muted {
+        color: #64748b;
+    }
+
+    .form-card {
+        background: #ffffff;
+        border: 1px solid #e1e7ef;
+        border-radius: 12px;
+        box-shadow:
+            0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .form-section-title {
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .form-control .q-field__control {
+        min-height: 48px;
+    }
+
+    .field-error {
+        color: #dc2626;
+        font-size: 12px;
+        margin-top: -8px;
+    }
+
+    .photo-panel {
+        background: #ffffff;
+        border: 1px solid #e1e7ef;
+        border-radius: 12px;
+        box-shadow:
+            0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .photo-placeholder {
+        width: 100%;
+        min-height: 220px;
+        background: #f8fafc;
+        border: 2px dashed #cbd5e1;
+        border-radius: 12px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .add-item-tip {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+    }
+
+    .required-note {
+        color: #64748b;
+        font-size: 12px;
+    }
+
+    .form-actions {
+        border-top: 1px solid #e2e8f0;
+        padding-top: 20px;
+    }
+
+    @media (max-width: 1050px) {
+        .add-item-layout {
+            grid-template-columns: 1fr !important;
+        }
+    }
+""",
+    shared=True,
+)
 
 
-async def load_categories(inventory_id: str) -> dict:
-    """Fetch available categories for an inventory"""
+# BACKEND DATA
+# ============================================================
+def load_add_item_options(
+    inventory_id: str,
+) -> dict:
+
     if not inventory_id or inventory_id == "None":
-        return {}
-        
+        return {
+            "inventory_name": "Inventory",
+            "categories": {},
+        }
+
     try:
         response = authenticated_session().get(
-            f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
-            timeout=5
+            (f"{BACKEND_URL}/api/inventory/" f"{inventory_id}/add-item/"),
+            timeout=5,
         )
+
         response.raise_for_status()
+
         data = response.json()
-        
-        if data.get('success'):
-            categories = data.get('categories', [])
-            
-            # Flexible mapping to catch id, public_id, or pk
-            category_dict = {}
-            for cat in categories:
-                cat_id = str(cat.get('id') or cat.get('public_id') or cat.get('pk'))
-                cat_name = cat.get('name') or cat.get('title')
-                if cat_id and cat_name:
-                    category_dict[cat_id] = cat_name
-                    
-            return category_dict
-            
-        return {}
-    except requests.RequestException as e:
-        print(f"Error loading categories: {e}")
-        return {}
+
+        if not data.get("success"):
+            return {
+                "inventory_name": "Inventory",
+                "categories": {},
+            }
+
+        category_options = {}
+
+        for category in data.get(
+            "categories",
+            [],
+        ):
+
+            category_id = str(category.get("id") or category.get("pk"))
+
+            category_name = category.get("name")
+
+            if category_id and category_name:
+                category_options[category_id] = category_name
+
+        return {
+            "inventory_name": (
+                data.get(
+                    "inventory",
+                    {},
+                ).get(
+                    "name",
+                    "Inventory",
+                )
+            ),
+            "categories": (category_options),
+        }
+
+    except requests.RequestException as error:
+
+        print(
+            "Error loading Add Item options:",
+            error,
+        )
+
+        return {
+            "inventory_name": "Inventory",
+            "categories": {},
+        }
 
 
+# PAGE
+# ============================================================
 @ui.page("/add-item/{inventory_id}")
-async def add_item_page(inventory_id: str):
-    """Page for adding a new item to an inventory"""
+def add_item_page(
+    inventory_id: str,
+):
 
     if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
         return
-    
-    # Load categories
-    categories = await load_categories(inventory_id)
-    
-    # State for form
-    form_data = {
-        'name': '',
-        'category': None,
-        'purchase_date': None,
-        'purchase_amount': None,
-        'description': '',
-        'brand': '',
-        'model_number': '',
-        'serial_number': '',
-        'condition': 'unknown',
-        'quantity': 1,
-        'manual_value': None,
-        'notes': '',
-    }
-    
-    errors = {}
-    success_message = ""
-    
-    # Header
-    with ui.header().classes("h-16 bg-white border-b"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.back()).props("flat round")
-        ui.label("Add Item").classes("text-xl font-bold ml-4")
-    
-    with ui.column().classes("w-full max-w-2xl mx-auto p-6 gap-4"):
-        
-        # Success message
-        success_label = ui.label().classes("text-green-600 font-semibold hidden")
-        
-        # Error message
-        error_label = ui.label().classes("text-red-600 font-semibold hidden")
-        
-        # Form sections
-        with ui.card().classes("w-full"):
-            ui.label("Required Information").classes("text-lg font-bold mb-4")
-            
-            with ui.column().classes("gap-4"):
-                # Name
-                name_input = ui.input(
-                    label="Item Name *",
-                    placeholder="Enter item name"
-                ).classes("w-full")
-                name_error = ui.label().classes("text-red-500 text-sm hidden")
-                
-                # Category
-                category_select = ui.select(
-                    label="Category *",
-                    options=categories,
-                ).classes("w-full")
-                category_error = ui.label().classes("text-red-500 text-sm hidden")
-                
-                # Purchase Date
-                ui.label("Date Acquired *")
-                purchase_date_input = ui.date(
-                    value=datetime.now().date()
-                ).classes("w-full")
-                date_error = ui.label().classes("text-red-500 text-sm hidden")
 
-                # Purchase Amount
-                purchase_amount_input = ui.number(
-                    label="Purchase Price ($) *",
-                    placeholder="0.00",
-                    min=0,
-                    step=0.01,
-                ).classes("w-full")
-                amount_error = ui.label().classes("text-red-500 text-sm hidden")
-        
-        # Additional fields
-        with ui.card().classes("w-full"):
-            ui.label("Additional Information").classes("text-lg font-bold mb-4")
-            
-            with ui.column().classes("gap-4"):
-                # Description
-                description_input = ui.textarea(
-                    label="Description",
-                    placeholder="Add any details about this item"
-                ).classes("w-full").props("rows=3")
-                
-                # Brand
-                brand_input = ui.input(
-                    label="Brand",
-                    placeholder="Brand name"
-                ).classes("w-full")
-                
-                # Model Number
-                model_input = ui.input(
-                    label="Model Number",
-                    placeholder="Model number"
-                ).classes("w-full")
-                
-                # Serial Number
-                serial_input = ui.input(
-                    label="Serial Number",
-                    placeholder="Serial number"
-                ).classes("w-full")
-                
-                # Condition
-                condition_select = ui.select(
-                    label="Condition",
-                    options={
-                        'new': 'New',
-                        'like_new': 'Like New',
-                        'used': 'Used',
-                        'damaged': 'Damaged',
-                        'unknown': 'Unknown',
-                    },
-                    value='unknown',
-                ).classes("w-full")
-                
-                # Quantity
-                quantity_input = ui.number(
-                    label="Quantity",
-                    value=1,
-                    min=1,
-                ).classes("w-full")
-                
-                # Manual Value
-                manual_value_input = ui.number(
-                    label="Manual Valuation ($)",
-                    placeholder="Optional: Set a custom value",
-                    min=0,
-                    step=0.01,
-                ).classes("w-full")
-                
-                # Notes
-                notes_input = ui.textarea(
-                    label="Notes",
-                    placeholder="Any additional notes"
-                ).classes("w-full").props("rows=3")
-        
-        # Submit button
+    ui.page_title("Add Item | CoverWorth")
+
+    build_app_shell(
+        "Inventory",
+        username=app.storage.user.get(
+            "username",
+            "User",
+        ),
+    )
+
+    options = load_add_item_options(inventory_id)
+
+    categories = options["categories"]
+
+    inventory_name = options["inventory_name"]
+
+    # MAIN CONTENT
+    # ========================================================
+    with ui.column().classes("add-item-container " "page-content-frame " "p-7 gap-5"):
+
+        # PAGE HEADER
+        # ====================================================
+        with ui.row().classes("w-full " "items-center " "justify-between " "gap-4"):
+
+            with ui.column().classes("gap-1"):
+
+                ui.button(
+                    "Back to Inventory",
+                    icon="arrow_back",
+                    on_click=lambda: ui.navigate.to("/inventory"),
+                ).props("flat " "color=primary " "no-caps").classes("self-start -ml-3")
+
+                ui.label("Add Item").classes("text-4xl " "font-bold " "tracking-tight")
+
+                ui.label(("Add a new belonging to " f"{inventory_name}")).classes(
+                    "text-base muted"
+                )
+
+        # MESSAGE AREA
+        # ====================================================
+        success_label = ui.label().classes(
+            "w-full "
+            "bg-green-50 "
+            "text-green-700 "
+            "border "
+            "border-green-200 "
+            "rounded-lg "
+            "px-4 py-3 "
+            "font-medium hidden"
+        )
+
+        error_label = ui.label().classes(
+            "w-full "
+            "bg-red-50 "
+            "text-red-700 "
+            "border "
+            "border-red-200 "
+            "rounded-lg "
+            "px-4 py-3 "
+            "font-medium hidden"
+        )
+
+        # TWO-COLUMN LAYOUT
+        # ====================================================
+        with ui.grid().classes(
+            "add-item-layout "
+            "w-full "
+            "grid-cols-[minmax(0,1.7fr)_minmax(300px,0.8fr)] "
+            "gap-5"
+        ):
+
+            # LEFT COLUMN
+            # =================================================
+            with ui.column().classes("w-full gap-5"):
+
+                # BASIC INFORMATION
+                # =============================================
+                with ui.card().classes("form-card " "w-full p-6 gap-5"):
+
+                    with ui.column().classes("gap-0"):
+
+                        ui.label("Basic Information").classes("form-section-title")
+
+                        ui.label(
+                            ("Start with the details " "that identify this item.")
+                        ).classes("text-sm muted")
+
+                    name_input = (
+                        ui.input(
+                            label="Item Name *",
+                        )
+                        .props("outlined")
+                        .classes("form-control w-full")
+                    )
+
+                    name_error = ui.label().classes("field-error hidden")
+
+                    # Category row
+                    with ui.row().classes("w-full " "items-end " "gap-3 " "flex-wrap"):
+
+                        category_select = (
+                            ui.select(
+                                options=categories,
+                                label="Category *",
+                            )
+                            .props("outlined")
+                            .classes("form-control " "min-w-[240px] " "flex-1")
+                        )
+
+                        ui.button(
+                            "Manage Categories",
+                            icon="category",
+                            on_click=lambda: ui.navigate.to("/categories"),
+                        ).props("outline " "color=primary " "no-caps").classes(
+                            "h-[48px]"
+                        )
+
+                    category_error = ui.label().classes("field-error hidden")
+
+                    description_input = (
+                        ui.textarea(
+                            label="Description"
+                        )
+                        .props("outlined rows=3")
+                        .classes("w-full")
+                    )
+
+                # ITEM DETAILS
+                # =============================================
+                with ui.card().classes("form-card " "w-full p-6 gap-5"):
+
+                    with ui.column().classes("gap-0"):
+
+                        ui.label("Item Details").classes("form-section-title")
+
+                        ui.label(
+                            (
+                                "Record identifying "
+                                "information for future "
+                                "reference."
+                            )
+                        ).classes("text-sm muted")
+
+                    with ui.grid(columns=2).classes(
+                        "w-full gap-4 " "max-sm:grid-cols-1"
+                    ):
+
+                        brand_input = (
+                            ui.input(
+                                label="Brand"
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                        model_input = (
+                            ui.input(
+                                label="Model Number"
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                        serial_input = (
+                            ui.input(
+                                label="Serial Number"
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                        condition_select = (
+                            ui.select(
+                                options={
+                                    "new": "New",
+                                    "like_new": ("Like New"),
+                                    "used": "Used",
+                                    "damaged": ("Damaged"),
+                                    "unknown": ("Unknown"),
+                                },
+                                value="unknown",
+                                label="Condition",
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                    quantity_input = (
+                        ui.number(
+                            label="Quantity",
+                            value=1,
+                            min=1,
+                            step=1,
+                        )
+                        .props("outlined")
+                        .classes("form-control " "w-full " "max-w-[220px]")
+                    )
+
+                # PURCHASE AND VALUE
+                # =============================================
+                with ui.card().classes("form-card " "w-full p-6 gap-5"):
+
+                    with ui.column().classes("gap-0"):
+
+                        ui.label("Purchase & Value").classes("form-section-title")
+
+                        ui.label(
+                            (
+                                "Record when the item "
+                                "was acquired and what "
+                                "you paid for it."
+                            )
+                        ).classes("text-sm muted")
+
+                    with ui.grid(columns=2).classes(
+                        "w-full gap-4 " "max-sm:grid-cols-1"
+                    ):
+
+                        purchase_date_input = (
+                            ui.input(
+                                label="Date Acquired *",
+                                value=(date.today().isoformat()),
+                            )
+                            .props("outlined type=date")
+                            .classes("form-control w-full")
+                        )
+
+                        purchase_amount_input = (
+                            ui.number(
+                                label=("Purchase Price ($) *"),
+                                min=0,
+                                step=0.01,
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                        manual_value_input = (
+                            ui.number(
+                                label=("Manual Value ($)"),
+                                min=0,
+                                step=0.01,
+                            )
+                            .props("outlined")
+                            .classes("form-control w-full")
+                        )
+
+                    with ui.row().classes("w-full gap-6"):
+
+                        date_error = ui.label().classes("field-error hidden")
+
+                        amount_error = ui.label().classes("field-error hidden")
+
+                    ui.label(
+                        (
+                            "If no manual value is "
+                            "entered, CoverWorth currently "
+                            "uses the purchase price as "
+                            "the initial manual value."
+                        )
+                    ).classes("required-note")
+
+                # NOTES
+                # =============================================
+                with ui.card().classes("form-card " "w-full p-6 gap-4"):
+
+                    with ui.column().classes("gap-0"):
+
+                        ui.label("Notes").classes("form-section-title")
+
+                        ui.label(
+                            ("Anything else you want " "to remember about this item.")
+                        ).classes("text-sm muted")
+
+                    notes_input = (
+                        ui.textarea(
+                            label="Notes",
+                            placeholder=(
+                                "Warranty details, provenance, special instructions, etc."
+                            ),
+                        )
+                        .props("outlined rows=4")
+                        .classes("w-full")
+                    )
+
+            # RIGHT COLUMN
+            # =================================================
+            with ui.column().classes("w-full gap-5"):
+
+                # PHOTO
+                # =============================================
+                with ui.card().classes("photo-panel " "w-full p-5 gap-4"):
+
+                    ui.label("Item Photo").classes("form-section-title")
+
+                    ui.label(
+                        ("Add a clear photo to make " "the item easier to identify.")
+                    ).classes("text-sm muted")
+
+                    with ui.column().classes(
+                        "photo-placeholder "
+                        "w-full "
+                        "items-center "
+                        "justify-center "
+                        "gap-2 p-5"
+                    ):
+
+                        ui.icon("add_photo_alternate").classes(
+                            "text-5xl " "text-slate-400"
+                        )
+
+                        ui.label("Upload a photo").classes(
+                            "font-semibold " "text-slate-700"
+                        )
+
+                        ui.label(("PNG or JPG image")).classes("text-xs muted")
+
+                    def photo_selected(event):
+
+                        ui.notify(
+                            (
+                                f"{event.name} selected. "
+                                "Photo persistence will "
+                                "be connected when the "
+                                "attachment API story "
+                                "is implemented."
+                            ),
+                            type="info",
+                        )
+
+                    ui.upload(
+                        label="Choose Photo",
+                        on_upload=(photo_selected),
+                        auto_upload=True,
+                        max_files=1,
+                    ).props("accept=image/*").classes("w-full")
+
+                # TIPS
+                # =============================================
+                with ui.row().classes(
+                    "add-item-tip " "w-full " "items-start " "gap-3 p-4 " "flex-nowrap"
+                ):
+
+                    ui.icon("lightbulb").classes("text-2xl " "text-blue-600")
+
+                    with ui.column().classes("gap-1"):
+
+                        ui.label("Good inventory records").classes(
+                            "font-semibold " "text-blue-900"
+                        )
+
+                        ui.label(
+                            (
+                                "Include brand, model, "
+                                "serial number, purchase "
+                                "price, and a clear photo "
+                                "when those details are "
+                                "available."
+                            )
+                        ).classes("text-sm " "text-blue-800")
+
+                # REQUIRED FIELD NOTE
+                # =============================================
+                with ui.card().classes("form-card " "w-full p-5 gap-2"):
+
+                    ui.label("Required Information").classes("font-semibold")
+
+                    for text in [
+                        "Item name",
+                        "Category",
+                        "Date acquired",
+                        "Purchase price",
+                    ]:
+
+                        with ui.row().classes("items-center gap-2"):
+
+                            ui.icon("check_circle").classes("text-green-600 " "text-lg")
+
+                            ui.label(text).classes("text-sm " "text-slate-700")
+
+        # SUBMIT
+        # ====================================================
         async def submit_form():
-            nonlocal errors, success_message
-            
-            # Clear previous messages
+
             error_label.visible = False
             success_label.visible = False
-            for label in [name_error, category_error, date_error, amount_error]:
+
+            for label in [
+                name_error,
+                category_error,
+                date_error,
+                amount_error,
+            ]:
                 label.visible = False
-            
-            # Collect form data
+
+            name = (name_input.value or "").strip()
+
             form_data = {
-                'name': name_input.value.strip(),
-                'category': category_select.value,
-                'purchase_date': str(purchase_date_input.value) if purchase_date_input.value else '',
-                'purchase_amount': purchase_amount_input.value,
-                'description': description_input.value,
-                'brand': brand_input.value,
-                'model_number': model_input.value,
-                'serial_number': serial_input.value,
-                'condition': condition_select.value,
-                'quantity': quantity_input.value,
-                'manual_value': manual_value_input.value if manual_value_input.value else '',
-                'notes': notes_input.value,
+                "name": name,
+                "category": (category_select.value or ""),
+                "purchase_date": (purchase_date_input.value or ""),
+                "purchase_amount": (
+                    purchase_amount_input.value
+                    if (purchase_amount_input.value is not None)
+                    else ""
+                ),
+                "description": (description_input.value or ""),
+                "brand": (brand_input.value or ""),
+                "model_number": (model_input.value or ""),
+                "serial_number": (serial_input.value or ""),
+                "condition": (condition_select.value),
+                "quantity": (quantity_input.value or 1),
+                "manual_value": (
+                    manual_value_input.value
+                    if (manual_value_input.value is not None)
+                    else ""
+                ),
+                "notes": (notes_input.value or ""),
             }
-            
+
             try:
+
                 session = authenticated_session()
+
                 response = session.post(
-                    f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
+                    (
+                        f"{BACKEND_URL}"
+                        f"/api/inventory/"
+                        f"{inventory_id}"
+                        "/add-item/"
+                    ),
                     data=form_data,
                     headers=csrf_headers(session),
-                    timeout=10
+                    timeout=10,
                 )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    success_message = data.get('message', 'Item added successfully!')
-                    success_label.set_text(success_message)
+
+                data = response.json()
+
+                if response.ok:
+
+                    success_label.text = data.get(
+                        "message",
+                        ("Item added " "successfully."),
+                    )
+
                     success_label.visible = True
-                    
-                    # Clear form
-                    name_input.value = ""
-                    category_select.value = None
-                    description_input.value = ""
-                    brand_input.value = ""
-                    model_input.value = ""
-                    serial_input.value = ""
-                    condition_select.value = "unknown"
-                    quantity_input.value = 1
-                    manual_value_input.value = None
-                    notes_input.value = ""
-                    
-                    # Redirect after 1.5 seconds
-                    ui.timer(1.5, lambda: ui.navigate.to("/"))
-                else:
-                    data = response.json()
-                    errors = data.get('errors', {})
-                    
-                    # Display field errors
-                    if 'name' in errors:
-                        name_error.set_text(errors['name'])
-                        name_error.visible = True
-                    if 'category' in errors:
-                        category_error.set_text(errors['category'])
-                        category_error.visible = True
-                    if 'purchase_date' in errors:
-                        date_error.set_text(errors['purchase_date'])
-                        date_error.visible = True
-                    if 'purchase_amount' in errors:
-                        amount_error.set_text(errors['purchase_amount'])
-                        amount_error.visible = True
-                    
-                    # Display general error
-                    error_msg = data.get('error', 'Failed to add item. Please check the errors below.')
-                    if errors and not error_msg.startswith('Failed'):
-                        error_msg = "Please correct the errors below."
-                    error_label.set_text(error_msg)
-                    error_label.visible = True
-            
-            except requests.RequestException as e:
-                error_label.set_text(f"Connection error: {str(e)}")
+
+                    ui.notify(
+                        "Item added successfully.",
+                        type="positive",
+                    )
+
+                    ui.timer(
+                        1.0,
+                        lambda: ui.navigate.to("/inventory"),
+                        once=True,
+                    )
+
+                    return
+
+                errors = data.get(
+                    "errors",
+                    {},
+                )
+
+                field_labels = {
+                    "name": name_error,
+                    "category": (category_error),
+                    "purchase_date": (date_error),
+                    "purchase_amount": (amount_error),
+                }
+
+                for (
+                    field,
+                    label,
+                ) in field_labels.items():
+
+                    if field in errors:
+
+                        message = errors[field]
+
+                        if isinstance(
+                            message,
+                            list,
+                        ):
+                            message = message[0] if message else ""
+
+                        label.text = str(message)
+
+                        label.visible = True
+
+                error_label.text = data.get(
+                    "error",
+                    ("Please correct " "the highlighted fields."),
+                )
+
                 error_label.visible = True
-        
-        # Button row
-        with ui.row().classes("w-full gap-4 justify-end mt-6"):
-            ui.button("Cancel", on_click=lambda: ui.navigate.back()).props("flat")
-            ui.button("Add Item", on_click=submit_form).props("unelevated").classes("bg-blue-600 text-white")
+
+            except requests.RequestException:
+
+                error_label.text = "Could not connect " "to the backend."
+
+                error_label.visible = True
+
+        with ui.row().classes(
+            "form-actions " "w-full " "items-center " "justify-between " "gap-4"
+        ):
+
+            ui.label("* Required field").classes("required-note")
+
+            with ui.row().classes("items-center gap-3"):
+
+                ui.button(
+                    "Cancel",
+                    on_click=lambda: ui.navigate.to("/inventory"),
+                ).props("outline " "color=grey-7 " "no-caps").classes("px-5")
+
+                ui.button(
+                    "Add Item",
+                    icon="add",
+                    on_click=submit_form,
+                ).props(
+                    "unelevated " "color=primary " "no-caps"
+                ).classes("px-6 py-2 " "rounded-lg")
