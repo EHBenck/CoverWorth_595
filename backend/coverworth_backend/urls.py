@@ -77,4 +77,6 @@ urlpatterns = [
     path("api/auth/logout/", views.auth_logout, name="auth-logout"),
     path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
     path("api/items/", views.item_list, name="item-list"),
+    path("api/inventory/<uuid:inventory_id>/categories/", views.category_list_api, name="category-list-api"),
+    path("api/category/<uuid:category_id>/", views.category_detail_api, name="category-detail-api"),
 ]

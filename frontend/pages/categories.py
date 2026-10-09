@@ -1,32 +1,21 @@
+from datetime import datetime
 from urllib.parse import quote
 
-from nicegui import ui
+import requests
+from nicegui import app, ui
 
-from utilities.mockdata import CATEGORY_SUMMARIES
+from backend_client import (
+    BACKEND_URL,
+    authenticated_session,
+    csrf_headers,
+)
+from utilities.constants import CATEGORY_VISUALS, DEFAULT_VISUAL
 from utilities.nav_wrapper import build_app_shell
 
 
-# ============================================================
-# COVERWORTH - CATEGORIES PAGE
-# ------------------------------------------------------------
-# Current implementation:
-#   - Uses shared mock data
-#   - Supports search
-#   - Supports sorting
-#   - Supports temporary Create / Edit / Delete interactions
-#
-# TODO:
-#   - Replace local category mutations with Django API calls
-#   - Load category summaries from backend
-#   - Connect inventory filtering by category public_id
-# ============================================================
-
-
-# ============================================================
-# STYLING
-# ============================================================
-
-ui.add_css("""
+# CSS
+ui.add_css(
+    """
     body {
         background: #f3f8fb;
         color: #0f172a;
@@ -37,11 +26,6 @@ ui.add_css("""
         padding: 0 !important;
         background-color: #f3f8fb !important;
     }
-
-
-    /* ========================================================
-       CATEGORIES PAGE
-       ======================================================== */
 
     .categories-container {
         width: 100%;
@@ -54,51 +38,31 @@ ui.add_css("""
     .categories-panel {
         width: 100%;
         background: #ffffff;
-
         border: 1px solid #e1e7ef;
         border-radius: 12px;
-
         box-shadow:
             0 2px 8px rgba(15, 23, 42, 0.04);
     }
 
-
-    /* ========================================================
-       FILTER CONTROLS
-       ======================================================== */
-
-    .category-filter-control .q-field__control {
+    .category-filter-control
+    .q-field__control {
         min-height: 52px;
     }
-
-
-    /* ========================================================
-       CATEGORY GRID
-       ======================================================== */
 
     .category-grid {
         display: grid;
         grid-template-columns:
             repeat(3, minmax(0, 1fr));
-
         width: 100%;
         gap: 16px;
     }
 
-
-    /* ========================================================
-       CATEGORY CARD
-       ======================================================== */
-
     .category-card {
         background: #ffffff;
-
         border: 1px solid #dbe5ef;
         border-radius: 12px;
-
         box-shadow:
             0 1px 4px rgba(15, 23, 42, 0.03);
-
         transition:
             box-shadow 0.15s ease,
             transform 0.15s ease,
@@ -107,74 +71,47 @@ ui.add_css("""
 
     .category-card:hover {
         border-color: #bfd5ee;
-
         box-shadow:
             0 6px 16px rgba(15, 23, 42, 0.07);
-
         transform: translateY(-1px);
     }
-
-
-    /* ========================================================
-       CATEGORY ICON
-       ======================================================== */
 
     .category-icon-box {
         width: 96px;
         height: 96px;
-
         border-radius: 18px;
-
         display: flex;
         align-items: center;
         justify-content: center;
-
         flex-shrink: 0;
     }
 
-
-    /* ========================================================
-       CARD TEXT
-       ======================================================== */
-
     .category-name {
         color: #0f172a;
-
         font-size: 20px;
         font-weight: 700;
     }
 
     .category-count {
         color: #526785;
-
         font-size: 15px;
     }
 
     .category-value {
         color: #0f172a;
-
         font-size: 28px;
         font-weight: 700;
-
         line-height: 1.1;
     }
 
     .category-updated {
         color: #64748b;
-
         font-size: 14px;
     }
 
-
-    /* ========================================================
-       ABOUT CATEGORIES
-       ======================================================== */
-
     .about-categories {
         width: 100%;
-
         background: #eff6ff;
-
         border: 1px solid #bfdbfe;
         border-radius: 10px;
     }
@@ -182,44 +119,24 @@ ui.add_css("""
     .about-icon {
         width: 38px;
         height: 38px;
-
         background: #0d6efd;
         color: white;
-
         border-radius: 50%;
-
         display: flex;
         align-items: center;
         justify-content: center;
-
         flex-shrink: 0;
     }
-
-
-    /* ========================================================
-       EMPTY STATE
-       ======================================================== */
 
     .category-empty {
         min-height: 280px;
     }
 
-
-    /* ========================================================
-       DIALOG
-       ======================================================== */
-
     .category-dialog-card {
         width: 520px;
         max-width: calc(100vw - 32px);
-
         border-radius: 12px;
     }
-
-
-    /* ========================================================
-       RESPONSIVE
-       ======================================================== */
 
     @media (max-width: 1150px) {
         .category-grid {
@@ -230,8 +147,7 @@ ui.add_css("""
 
     @media (max-width: 750px) {
         .category-grid {
-            grid-template-columns:
-                1fr;
+            grid-template-columns: 1fr;
         }
 
         .category-icon-box {
@@ -239,363 +155,343 @@ ui.add_css("""
             height: 78px;
         }
     }
-""", shared=True)
+""",
+    shared=True,
+)
 
 
-# ============================================================
-# CATEGORIES PAGE
-# ============================================================
+# HELPERS
+def category_visual(name: str) -> dict:
+    return CATEGORY_VISUALS.get(
+        name.strip().lower(),
+        DEFAULT_VISUAL,
+    )
 
+
+def updated_label(value: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+        now = datetime.now(parsed.tzinfo)
+
+        days = max(
+            0,
+            (now - parsed).days,
+        )
+
+        if days == 0:
+            return "Updated today"
+
+        if days == 1:
+            return "Updated 1d ago"
+
+        if days < 7:
+            return f"Updated {days}d ago"
+
+        weeks = days // 7
+
+        if weeks == 1:
+            return "Updated 1w ago"
+
+        return f"Updated {weeks}w ago"
+
+    except (
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
+        return "Recently updated"
+
+
+def updated_days(value: str) -> int:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+        now = datetime.now(parsed.tzinfo)
+
+        return max(
+            0,
+            (now - parsed).days,
+        )
+
+    except (
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
+        return 0
+
+
+def fetch_inventory_id() -> str | None:
+
+    try:
+        response = authenticated_session().get(
+            f"{BACKEND_URL}/api/dashboard/",
+            timeout=5,
+        )
+
+        if response.status_code == 401:
+            return None
+
+        response.raise_for_status()
+
+        return response.json().get("inventory_id")
+
+    except requests.RequestException:
+        return None
+
+
+def fetch_categories(
+    inventory_id: str,
+) -> list[dict]:
+
+    try:
+        response = authenticated_session().get(
+            (f"{BACKEND_URL}/api/inventory/" f"{inventory_id}/categories/"),
+            timeout=5,
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return data.get("categories", [])
+
+    except requests.RequestException as error:
+        print("Error loading categories:", error)
+        return []
+
+
+# PAGE
 @ui.page("/categories")
 def categories_page():
 
-    ui.page_title(
-        "Categories | CoverWorth"
-    )
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
+
+    ui.page_title("Categories | CoverWorth")
 
     build_app_shell(
-        "Categories"
+        "Categories",
+        username=app.storage.user.get(
+            "username",
+            "User",
+        ),
     )
 
+    inventory_id = fetch_inventory_id()
 
-    # --------------------------------------------------------
-    # Make a page-local copy of the mock records.
-    #
-    # This lets Create/Edit/Delete work during the current
-    # browser session without changing utilities/mockdata.py.
-    #
-    # Later this will come from Django instead.
-    # --------------------------------------------------------
-
-    categories = [
-        category.copy()
-        for category in CATEGORY_SUMMARIES
-    ]
-
-    editing_category_id = {
-        "value": None
-    }
-
-
-    # ========================================================
-    # CREATE / EDIT CATEGORY DIALOG
-    # ========================================================
-
-    with ui.dialog() as category_dialog:
-
-        with ui.card().classes(
-            "category-dialog-card p-6 gap-5"
+    if not inventory_id:
+        with ui.column().classes(
+            "page-content-frame " "items-center " "justify-center " "gap-3 p-8"
         ):
+            ui.icon("inventory_2").classes("text-5xl text-slate-300")
 
-            with ui.column().classes(
-                "gap-0"
-            ):
+            ui.label("No inventory found").classes("text-xl font-bold")
 
-                dialog_title = ui.label(
-                    "Create Category"
-                ).classes(
-                    "text-2xl font-bold"
-                )
+            ui.label(
+                ("CoverWorth could not find an active inventory for this account.")
+            ).classes("muted")
+        return
+
+    state = {"categories": fetch_categories(inventory_id)}
+
+    editing_category = {"value": None}
+
+    # API REFRESH
+    def reload_categories():
+
+        state["categories"] = fetch_categories(inventory_id)
+
+        category_grid.refresh()
+
+    # CREATE / EDIT DIALOG
+    with ui.dialog() as category_dialog:
+        with ui.card().classes("category-dialog-card p-6 gap-5"):
+            with ui.column().classes("gap-0"):
+                dialog_title = ui.label("Create Category").classes("text-2xl font-bold")
 
                 dialog_subtitle = ui.label(
-                    "Create a category to organize your inventory."
-                ).classes(
-                    "text-sm muted"
+                    ("Create a category to organize your inventory.")
+                ).classes("text-sm muted")
+
+            category_name = (
+                ui.input(
+                    label="Category Name",
                 )
-
-
-            category_name_input = ui.input(
-                label="Category Name",
-                placeholder="Example: Photography Gear",
-            ).props(
-                "outlined"
-            ).classes(
-                "w-full"
+                .props("outlined")
+                .classes("w-full")
             )
 
-
-            category_description_input = ui.textarea(
-                label="Description",
-                placeholder=(
-                    "Add an optional description "
-                    "for this category..."
-                ),
-            ).props(
-                "outlined autogrow"
-            ).classes(
-                "w-full"
+            category_description = (
+                ui.textarea(
+                    label="Description",
+                )
+                .props("outlined autogrow")
+                .classes("w-full")
             )
 
+            dialog_error = ui.label().classes("text-sm text-red-600")
 
-            dialog_error = ui.label().classes(
-                "text-sm text-red-600"
-            )
-
-
-            def close_category_dialog():
-
+            def close_dialog():
                 category_dialog.close()
 
-                category_name_input.value = ""
-                category_description_input.value = ""
+                category_name.value = ""
+                category_description.value = ""
 
-                editing_category_id["value"] = None
+                editing_category["value"] = None
 
                 dialog_error.text = ""
 
-
             def save_category():
+                name = (category_name.value or "").strip()
 
-                name = (
-                    category_name_input.value or ""
-                ).strip()
-
-                description = (
-                    category_description_input.value or ""
-                ).strip()
-
-
-                # --------------------------------------------
-                # VALIDATION
-                # --------------------------------------------
+                description = (category_description.value or "").strip()
 
                 if not name:
-
-                    dialog_error.text = (
-                        "Category name is required."
-                    )
-
+                    dialog_error.text = "Category name is required."
                     return
 
+                session = authenticated_session()
 
-                duplicate = next(
-                    (
-                        category
-                        for category in categories
-                        if (
-                            category["name"].lower()
-                            == name.lower()
-                            and category["id"]
-                            != editing_category_id["value"]
-                        )
-                    ),
-                    None,
-                )
+                headers = csrf_headers(session)
 
+                payload = {
+                    "name": name,
+                    "description": description,
+                }
 
-                if duplicate:
+                try:
+                    current = editing_category["value"]
 
-                    dialog_error.text = (
-                        "A category with this name "
-                        "already exists."
-                    )
-
-                    return
-
-
-                # --------------------------------------------
-                # CREATE
-                # --------------------------------------------
-
-                if editing_category_id["value"] is None:
-
-                    next_id = (
-                        max(
+                    if current is None:
+                        response = session.post(
                             (
-                                category["id"]
-                                for category in categories
+                                f"{BACKEND_URL}"
+                                f"/api/inventory/"
+                                f"{inventory_id}"
+                                "/categories/"
                             ),
-                            default=0,
+                            json=payload,
+                            headers=headers,
+                            timeout=5,
                         )
-                        + 1
-                    )
+                    else:
+                        response = session.put(
+                            (
+                                f"{BACKEND_URL}"
+                                f"/api/category/"
+                                f'{current["public_id"]}/'
+                            ),
+                            json=payload,
+                            headers=headers,
+                            timeout=5,
+                        )
 
+                    data = response.json()
 
-                    categories.append(
-                        {
-                            "id": next_id,
-                            "name": name,
-                            "description": description,
-                            "item_count": 0,
-                            "total_value": 0,
-                            "updated": "Updated just now",
-                            "updated_days": 0,
-                            "icon": "category",
-                            "icon_background": "#dbeafe",
-                            "icon_color": "#1d4ed8",
-                        }
-                    )
+                    if not response.ok:
+                        errors = data.get(
+                            "errors",
+                            {},
+                        )
 
+                        first_error = next(
+                            iter(errors.values()),
+                            data.get(
+                                "error",
+                                ("Unable to save " "category."),
+                            ),
+                        )
+
+                        if isinstance(
+                            first_error,
+                            list,
+                        ):
+                            first_error = (
+                                first_error[0] if first_error else "Unable to save."
+                            )
+
+                        dialog_error.text = str(first_error)
+
+                        return
+
+                    action = "created" if current is None else "updated"
 
                     ui.notify(
-                        f'Category "{name}" created.',
+                        (f'Category "{name}" ' f"{action}."),
                         type="positive",
                     )
 
+                    close_dialog()
 
-                # --------------------------------------------
-                # EDIT
-                # --------------------------------------------
+                    reload_categories()
 
-                else:
+                except requests.RequestException:
+                    dialog_error.text = "Could not connect to the backend."
 
-                    category = next(
-                        (
-                            category
-                            for category in categories
-                            if category["id"]
-                            == editing_category_id["value"]
-                        ),
-                        None,
-                    )
-
-
-                    if category:
-
-                        category["name"] = name
-
-                        category["description"] = (
-                            description
-                        )
-
-                        category["updated"] = (
-                            "Updated just now"
-                        )
-
-                        category["updated_days"] = 0
-
-
-                        ui.notify(
-                            f'Category "{name}" updated.',
-                            type="positive",
-                        )
-
-
-                close_category_dialog()
-
-                category_grid.refresh()
-
-
-            with ui.row().classes(
-                "w-full "
-                "items-center "
-                "justify-end "
-                "gap-3"
-            ):
-
+            with ui.row().classes("w-full justify-end gap-3"):
                 ui.button(
                     "Cancel",
-                    on_click=close_category_dialog,
-                ).props(
-                    "flat "
-                    "color=grey-7 "
-                    "no-caps"
-                )
-
+                    on_click=close_dialog,
+                ).props("flat " "color=grey-7 " "no-caps")
 
                 ui.button(
                     "Save Category",
                     icon="check",
                     on_click=save_category,
                 ).props(
-                    "unelevated "
-                    "color=primary "
-                    "no-caps"
-                ).classes(
-                    "px-5"
-                )
+                    "unelevated " "color=primary " "no-caps"
+                ).classes("px-5")
 
+    def open_create():
 
-    # ========================================================
-    # OPEN CREATE DIALOG
-    # ========================================================
+        editing_category["value"] = None
 
-    def open_create_category():
+        dialog_title.text = "Create Category"
 
-        editing_category_id["value"] = None
+        dialog_subtitle.text = "Create a category to organize your inventory."
 
-        dialog_title.text = (
-            "Create Category"
-        )
+        category_name.value = ""
 
-        dialog_subtitle.text = (
-            "Create a category to organize your inventory."
-        )
-
-        category_name_input.value = ""
-
-        category_description_input.value = ""
+        category_description.value = ""
 
         dialog_error.text = ""
 
         category_dialog.open()
 
+    def open_edit(category):
 
-    # ========================================================
-    # OPEN EDIT DIALOG
-    # ========================================================
+        editing_category["value"] = category
 
-    def open_edit_category(category):
+        dialog_title.text = "Edit Category"
 
-        editing_category_id["value"] = (
-            category["id"]
-        )
+        dialog_subtitle.text = "Update this category's name or description."
 
-        dialog_title.text = (
-            "Edit Category"
-        )
+        category_name.value = category["name"]
 
-        dialog_subtitle.text = (
-            "Update this category's name or description."
-        )
-
-        category_name_input.value = (
-            category["name"]
-        )
-
-        category_description_input.value = (
-            category.get(
-                "description",
-                "",
-            )
+        category_description.value = category.get(
+            "description",
+            "",
         )
 
         dialog_error.text = ""
 
         category_dialog.open()
 
-
-    # ========================================================
-    # DELETE CATEGORY
-    # ========================================================
-
-    def open_delete_dialog(category):
-
-        with ui.dialog() as delete_dialog:
-
+    # DELETE
+    def open_delete(category):
+        with ui.dialog() as dialog:
             with ui.card().classes(
-                "w-[460px] "
-                "max-w-[calc(100vw-32px)] "
-                "p-6 gap-5"
+                "w-[460px] " "max-w-[calc(100vw-32px)] " "p-6 gap-5"
             ):
+                with ui.row().classes("items-center gap-3"):
+                    ui.icon("warning_amber").classes("text-3xl text-red-600")
 
-                with ui.row().classes(
-                    "items-center gap-3"
-                ):
+                    with ui.column().classes("gap-0"):
 
-                    ui.icon(
-                        "warning_amber"
-                    ).classes(
-                        "text-3xl text-red-600"
-                    )
-
-                    with ui.column().classes(
-                        "gap-0"
-                    ):
-
-                        ui.label(
-                            f'Delete {category["name"]}?'
-                        ).classes(
+                        ui.label(("Delete " f'{category["name"]}?')).classes(
                             "text-xl font-bold"
                         )
 
@@ -605,212 +501,135 @@ def categories_page():
                                 "items currently use "
                                 "this category."
                             )
-                        ).classes(
-                            "text-sm muted"
-                        )
-
+                        ).classes("text-sm muted")
 
                 ui.label(
                     (
-                        "This frontend prototype will remove "
-                        "the category from this page only. "
-                        "Database deletion will be handled "
-                        "when the category API is implemented."
+                        "Items using this category "
+                        "will become Uncategorized. "
+                        "The items themselves will "
+                        "not be deleted."
                     )
-                ).classes(
-                    "text-sm text-slate-700"
-                )
+                ).classes("text-sm text-slate-700")
 
+                def confirm_delete():
 
-                def delete_category():
+                    session = authenticated_session()
 
-                    categories[:] = [
-                        existing
-                        for existing in categories
-                        if existing["id"]
-                        != category["id"]
-                    ]
+                    try:
+                        response = session.delete(
+                            (
+                                f"{BACKEND_URL}"
+                                f"/api/category/"
+                                f'{category["public_id"]}/'
+                            ),
+                            headers=csrf_headers(session),
+                            timeout=5,
+                        )
 
-                    delete_dialog.close()
+                        if not response.ok:
 
-                    category_grid.refresh()
+                            ui.notify(
+                                ("Unable to delete " "category."),
+                                type="negative",
+                            )
 
-                    ui.notify(
-                        (
-                            f'{category["name"]} '
-                            "removed from the prototype."
-                        ),
-                        type="warning",
-                    )
+                            return
 
+                        dialog.close()
 
-                with ui.row().classes(
-                    "w-full "
-                    "justify-end "
-                    "gap-3"
-                ):
+                        ui.notify(
+                            (f'{category["name"]} ' "deleted."),
+                            type="positive",
+                        )
 
+                        reload_categories()
+
+                    except requests.RequestException:
+                        ui.notify(
+                            ("Could not connect " "to the backend."),
+                            type="negative",
+                        )
+
+                with ui.row().classes("w-full justify-end gap-3"):
                     ui.button(
                         "Cancel",
-                        on_click=delete_dialog.close,
-                    ).props(
-                        "flat "
-                        "color=grey-7 "
-                        "no-caps"
-                    )
-
+                        on_click=dialog.close,
+                    ).props("flat " "color=grey-7 " "no-caps")
 
                     ui.button(
                         "Delete Category",
                         icon="delete",
-                        on_click=delete_category,
-                    ).props(
-                        "unelevated "
-                        "color=negative "
-                        "no-caps"
-                    )
+                        on_click=confirm_delete,
+                    ).props("unelevated " "color=negative " "no-caps")
 
+        dialog.open()
 
-        delete_dialog.open()
+    # PAGE CONTENT
+    with ui.column().classes("categories-container " "page-content-frame " "p-7 gap-5"):
 
-
-    # ========================================================
-    # MAIN PAGE CONTENT
-    # ========================================================
-
-    with ui.column().classes(
-        "categories-container "
-        "page-content-frame "
-        "p-7 gap-5"
-    ):
-
-
-        # ====================================================
-        # PAGE HEADER
-        # ====================================================
-
-        with ui.row().classes(
-            "w-full "
-            "items-center "
-            "justify-between"
-        ):
-
-
-            with ui.column().classes(
-                "gap-0"
-            ):
-
-                ui.label(
-                    "Categories"
-                ).classes(
-                    "text-4xl "
-                    "font-bold "
-                    "tracking-tight"
+        with ui.row().classes("w-full " "items-center " "justify-between"):
+            with ui.column().classes("gap-0"):
+                ui.label("Categories").classes(
+                    "text-4xl " "font-bold " "tracking-tight"
                 )
 
-                ui.label(
-                    "Organize your inventory by category"
-                ).classes(
+                ui.label(("Organize your inventory " "by category")).classes(
                     "text-base muted"
                 )
-
 
             ui.button(
                 "New Category",
                 icon="add",
-                on_click=open_create_category,
+                on_click=open_create,
             ).props(
-                "unelevated "
-                "color=primary "
-                "no-caps"
-            ).classes(
-                "px-5 py-2 rounded-lg"
-            )
+                "unelevated " "color=primary " "no-caps"
+            ).classes("px-5 py-2 rounded-lg")
 
+        with ui.card().classes("categories-panel " "w-full p-4 gap-5"):
 
-        # ====================================================
-        # CATEGORY PANEL
-        # ====================================================
+            def refresh_grid():
+                category_grid.refresh()
 
-        with ui.card().classes(
-            "categories-panel "
-            "w-full "
-            "p-4 gap-5"
-        ):
-
-
-            # =================================================
-            # SEARCH / SORT
-            # =================================================
-
-            with ui.row().classes(
-                "w-full "
-                "items-center "
-                "gap-4 "
-                "flex-wrap"
-            ):
-
-
-                def refresh_categories():
-
-                    category_grid.refresh()
-
-
-                search_input = ui.input(
-                    placeholder="Search categories...",
-                    on_change=lambda _:
-                    refresh_categories(),
-                ).props(
-                    "outlined "
-                    "prepend-icon=search "
-                    "clearable"
-                ).classes(
-                    "category-filter-control "
-                    "min-w-[300px] "
-                    "flex-1"
+            with ui.row().classes("w-full " "items-center " "gap-4 flex-wrap"):
+                search = (
+                    ui.input(
+                        placeholder=("Search categories..."),
+                        on_change=lambda _: refresh_grid(),
+                    )
+                    .props("outlined " "prepend-icon=search " "clearable")
+                    .classes("category-filter-control " "min-w-[300px] flex-1")
                 )
-
 
                 with ui.row().classes("items-center gap-2"):
                     ui.label("Sort by").classes("text-sm muted")
-                    sort_filter = ui.select(
-                        [
-                            "Value",
-                            "Name",
-                            "Item Count",
-                            "Recently Updated",
-                        ],
-                        value="Value",
-                        on_change=lambda _:
-                        refresh_categories(),
-                    ).props(
-                        "outlined options-dense"
-                    ).classes(
-                        "category-filter-control "
-                        "w-[210px]"
+
+                    sort_by = (
+                        ui.select(
+                            [
+                                "Value",
+                                "Name",
+                                "Item Count",
+                                "Recently Updated",
+                            ],
+                            value="Value",
+                            on_change=lambda _: refresh_grid(),
+                        )
+                        .props("outlined options-dense")
+                        .classes("category-filter-control " "w-[210px]")
                     )
-
-
-            # =================================================
-            # CATEGORY GRID
-            # =================================================
 
             @ui.refreshable
             def category_grid():
+                query = (search.value or "").strip().lower()
 
-                search_text = (
-                    search_input.value or ""
-                ).strip().lower()
-
-
-                filtered_categories = [
+                categories = [
                     category
-                    for category in categories
+                    for category in state["categories"]
                     if (
-                        not search_text
-                        or search_text
-                        in category["name"].lower()
-                        or search_text
+                        not query
+                        or query in category["name"].lower()
+                        or query
                         in category.get(
                             "description",
                             "",
@@ -818,227 +637,88 @@ def categories_page():
                     )
                 ]
 
-
-                # --------------------------------------------
-                # SORTING
-                # --------------------------------------------
-
-                if sort_filter.value == "Value":
-
-                    filtered_categories.sort(
-                        key=lambda category:
-                        category["total_value"],
+                if sort_by.value == "Value":
+                    categories.sort(
+                        key=lambda item: item["total_value"],
+                        reverse=True,
+                    )
+                elif sort_by.value == "Name":
+                    categories.sort(key=lambda item: item["name"].lower())
+                elif sort_by.value == "Item Count":
+                    categories.sort(
+                        key=lambda item: item["item_count"],
                         reverse=True,
                     )
 
+                else:
+                    categories.sort(key=lambda item: updated_days(item["updated_at"]))
 
-                elif sort_filter.value == "Name":
-
-                    filtered_categories.sort(
-                        key=lambda category:
-                        category["name"].lower()
-                    )
-
-
-                elif sort_filter.value == "Item Count":
-
-                    filtered_categories.sort(
-                        key=lambda category:
-                        category["item_count"],
-                        reverse=True,
-                    )
-
-
-                elif sort_filter.value == "Recently Updated":
-
-                    filtered_categories.sort(
-                        key=lambda category:
-                        category["updated_days"]
-                    )
-
-
-                # --------------------------------------------
-                # EMPTY STATE
-                # --------------------------------------------
-
-                if not filtered_categories:
-
+                if not categories:
                     with ui.column().classes(
-                        "category-empty "
-                        "w-full "
-                        "items-center "
-                        "justify-center "
-                        "gap-2"
+                        "category-empty " "w-full items-center " "justify-center gap-2"
                     ):
+                        ui.icon("category").classes("text-6xl " "text-slate-300")
 
-                        ui.icon(
-                            "category"
-                        ).classes(
-                            "text-6xl "
-                            "text-slate-300"
+                        ui.label("No categories found").classes(
+                            "text-lg " "font-semibold " "text-slate-600"
                         )
 
                         ui.label(
-                            "No categories found"
-                        ).classes(
-                            "text-lg "
-                            "font-semibold "
-                            "text-slate-600"
-                        )
-
-                        ui.label(
-                            (
-                                "Try changing your search "
-                                "or create a new category."
-                            )
-                        ).classes(
-                            "text-sm muted"
-                        )
-
+                            ("Create your first category or change your search.")
+                        ).classes("text-sm muted")
                     return
 
-
-                # --------------------------------------------
-                # CARDS
-                # --------------------------------------------
-
-                with ui.element(
-                    "div"
-                ).classes(
-                    "category-grid"
-                ):
-
-
-                    for category in filtered_categories:
-
-                        with ui.card().classes(
-                            "category-card "
-                            "w-full "
-                            "p-5 gap-4"
-                        ):
-
-
-                            # =================================
-                            # CARD TOP
-                            # =================================
-
+                with ui.element("div").classes("category-grid"):
+                    for category in categories:
+                        visual = category_visual(category["name"])
+                        with ui.card().classes("category-card " "w-full p-5 gap-4"):
                             with ui.row().classes(
-                                "w-full "
-                                "items-start "
-                                "gap-4 "
-                                "flex-nowrap"
+                                "w-full " "items-start " "gap-4 flex-nowrap"
                             ):
-
-
-                                # -----------------------------
-                                # ICON
-                                # -----------------------------
-
-                                with ui.element(
-                                    "div"
-                                ).classes(
+                                with ui.element("div").classes(
                                     "category-icon-box"
-                                ).style(
-                                    (
-                                        "background: "
-                                        f'{category["icon_background"]};'
-                                    )
-                                ):
-
-                                    ui.icon(
-                                        category["icon"]
-                                    ).classes(
-                                        "text-5xl"
-                                    ).style(
-                                        (
-                                            "color: "
-                                            f'{category["icon_color"]};'
-                                        )
+                                ).style(("background: " f'{visual["background"]};')):
+                                    ui.icon(visual["icon"]).classes("text-5xl").style(
+                                        ("color: " f'{visual["color"]};')
                                     )
 
-
-                                # -----------------------------
-                                # CATEGORY INFO
-                                # -----------------------------
-
-                                with ui.column().classes(
-                                    "gap-1 flex-1"
-                                ):
+                                with ui.column().classes("gap-1 flex-1"):
+                                    ui.label(category["name"]).classes("category-name")
 
                                     ui.label(
-                                        category["name"]
-                                    ).classes(
-                                        "category-name"
-                                    )
+                                        (f'{category["item_count"]:,} ' "items")
+                                    ).classes("category-count")
 
                                     ui.label(
-                                        (
-                                            f'{category["item_count"]:,} '
-                                            "items"
-                                        )
-                                    ).classes(
-                                        "category-count"
-                                    )
+                                        (f'${category["total_value"]:,.0f}')
+                                    ).classes("category-value mt-1")
 
-                                    ui.label(
-                                        (
-                                            f'${category["total_value"]:,.0f}'
-                                        )
-                                    ).classes(
-                                        "category-value mt-1"
-                                    )
-
-
-                                    with ui.row().classes(
-                                        "items-center "
-                                        "gap-2 mt-1"
-                                    ):
-
-                                        ui.icon(
-                                            "schedule"
-                                        ).classes(
-                                            "text-[18px] "
-                                            "text-slate-500"
+                                    with ui.row().classes("items-center " "gap-2 mt-1"):
+                                        ui.icon("schedule").classes(
+                                            "text-[18px] " "text-slate-500"
                                         )
 
                                         ui.label(
-                                            category["updated"]
-                                        ).classes(
-                                            "category-updated"
-                                        )
+                                            updated_label(category["updated_at"])
+                                        ).classes("category-updated")
 
-
-                                # -----------------------------
-                                # ACTION MENU
-                                # -----------------------------
-
-                                with ui.button(
-                                    icon="more_vert"
-                                ).props(
-                                    "flat "
-                                    "round "
-                                    "dense "
-                                    "color=grey-9"
+                                with ui.button(icon="more_vert").props(
+                                    "flat " "round " "dense " "color=grey-9"
                                 ):
-
                                     with ui.menu():
-
                                         ui.menu_item(
                                             "Edit Category",
                                             on_click=(
-                                                lambda category=category:
-                                                open_edit_category(
+                                                lambda category=category: open_edit(
                                                     category
                                                 )
                                             ),
                                         )
 
-
                                         ui.menu_item(
                                             "View Items",
                                             on_click=(
-                                                lambda category=category:
-                                                ui.navigate.to(
+                                                lambda category=category: ui.navigate.to(
                                                     (
                                                         "/inventory"
                                                         "?category="
@@ -1048,34 +728,24 @@ def categories_page():
                                             ),
                                         )
 
-
                                         ui.separator()
-
 
                                         ui.menu_item(
                                             "Delete Category",
                                             on_click=(
-                                                lambda category=category:
-                                                open_delete_dialog(
+                                                lambda category=category: open_delete(
                                                     category
                                                 )
                                             ),
                                         )
 
-
-                            # =================================
-                            # CARD FOOTER
-                            # =================================
-
                             ui.separator()
 
-
-                            ui.button(
+                            ui.button(  # CATEGORY NAME BUTTON NAVIGATION LOGIC
                                 "View Items",
                                 icon="arrow_forward",
                                 on_click=(
-                                    lambda category=category:
-                                    ui.navigate.to(
+                                    lambda category=category: ui.navigate.to(
                                         (
                                             "/inventory"
                                             "?category="
@@ -1084,65 +754,26 @@ def categories_page():
                                     )
                                 ),
                             ).props(
-                                "flat "
-                                "color=primary "
-                                "no-caps "
-                                "icon-right"
+                                "flat " "color=primary " "no-caps " "icon-right"
                             ).classes(
-                                "self-start "
-                                "font-semibold"
+                                "self-start " "font-semibold"
                             )
-
 
             category_grid()
 
-
-            # =================================================
-            # ABOUT CATEGORIES
-            # =================================================
-
             with ui.row().classes(
-                "about-categories "
-                "items-center "
-                "gap-4 "
-                "p-4 "
-                "flex-nowrap"
+                "about-categories " "items-center gap-4 " "p-4 flex-nowrap"
             ):
+                with ui.element("div").classes("about-icon"):
+                    ui.icon("info").classes("text-xl")
 
-
-                with ui.element(
-                    "div"
-                ).classes(
-                    "about-icon"
-                ):
-
-                    ui.icon(
-                        "info"
-                    ).classes(
-                        "text-xl"
-                    )
-
-
-                with ui.column().classes(
-                    "gap-0"
-                ):
-
-                    ui.label(
-                        "About Categories"
-                    ).classes(
-                        "text-base "
-                        "font-semibold "
-                        "text-slate-900"
+                with ui.column().classes("gap-0"):
+                    ui.label("About Categories").classes(
+                        "text-base " "font-semibold " "text-slate-900"
                     )
 
                     ui.label(
                         (
-                            "Categories help you organize your "
-                            "inventory items. You'll select a "
-                            "category when adding new items, "
-                            "and you can use categories to "
-                            "filter and view your inventory."
+                            "Categories help you organize your inventory items. Categories created here are available when adding or editing items."
                         )
-                    ).classes(
-                        "text-sm text-slate-600"
-                    )
+                    ).classes("text-sm text-slate-600")
