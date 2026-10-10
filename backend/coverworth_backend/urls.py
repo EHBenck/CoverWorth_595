@@ -79,4 +79,6 @@ urlpatterns = [
     path("api/items/", views.item_list, name="item-list"),
     path("api/inventory/<uuid:inventory_id>/categories/", views.category_list_api, name="category-list-api"),
     path("api/category/<uuid:category_id>/", views.category_detail_api, name="category-detail-api"),
+    path("api/item/<uuid:item_id>/valuation/", views.item_valuation_api, name="item-valuation-api"),
+    path("api/item/<uuid:item_id>/valuation/", views.item_valuation_api, name="item-valuation-api"),
 ]

@@ -11,6 +11,11 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from myapp.forms import ItemForm
 from myapp.models import Category, Inventory, Item
+import os
+import requests
+from .models import Item
+from inventory_manager.pipeline.ebay_client import search_ebay
+from inventory_manager.pipeline.poc_valuation import estimate
 
 
 @ensure_csrf_cookie
@@ -443,6 +448,41 @@ def item_detail_api(request, item_id):
             'error': str(e),
         }, status=500)
 
+@require_POST
+def item_valuation_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    token = os.getenv("EBAY_ACCESS_TOKEN")
+    if not token:
+        return JsonResponse({"error": "eBay access token is not configured."}, status=503)
+    query = " ".join(
+        part.strip()
+        for part in [item.name, item.brand, item.model_number]
+        if part and part.strip()
+    )
+    condition = (
+        "new"
+        if item.condition == "new"
+        else "used"
+    )
+    try: 
+        rows = search_ebay(query, token)
+        result = estimate(rows, query, want_condition=condition)
+    except requests.exceptions.RequestException:
+        return JsonResponse({"error": "Unable to retrieve eBay listings"}, status=502,)
+    return JsonResponse({
+        "item_id": str(item.public_id),
+        "item_name": item.name,
+        "query": query,
+        "estimate": result["estimate"],
+        "range_low": result.get("low"),
+        "range_high": result.get("high"),
+        "sample_count": result["n"],
+        "confidence": result["confidence"],
+        "source": "ebay",
+        "currency": "USD",
+    })
 
 def category_payload(category):
     items = list(
