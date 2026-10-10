@@ -5,22 +5,16 @@ from nicegui import app, ui
 from backend_client import BACKEND_URL, authenticated_session
 from utilities.nav_wrapper import build_app_shell
 
-
-# ============================================================
-# COVERWORTH - REPORTS PAGE
-# ------------------------------------------------------------
 # TODO:
 #   - Add Django report generation endpoints
 #   - Download generated PDF / CSV reports
-#   - Populate collections dynamically
-# ============================================================
+#  - Add report preview functionality
 
 
-# ============================================================
 # STYLING
 # ============================================================
-
-ui.add_css("""
+ui.add_css(
+    """
     body {
         background: #f3f8fb;
         color: #0f172a;
@@ -176,19 +170,17 @@ ui.add_css("""
             grid-template-columns: 1fr !important;
         }
     }
-""", shared=True)
+""",
+    shared=True,
+)
 
 
-# ============================================================
 # DATA
 # ============================================================
 
-def load_report_summary() -> dict:
-    """
-    Use the existing dashboard endpoint so Reports can display
-    real inventory totals without requiring a new backend route.
-    """
 
+def load_report_data() -> tuple[dict, str | None]: # Load the report summary and inventory ID from the dashboard endpoint.
+   
     default_summary = {
         "total_items": 0,
         "estimated_value": 0,
@@ -199,7 +191,7 @@ def load_report_summary() -> dict:
     cookies = app.storage.user.get("auth_cookies")
 
     if not cookies:
-        return default_summary
+        return default_summary, None
 
     try:
         response = authenticated_session(cookies).get(
@@ -208,32 +200,51 @@ def load_report_summary() -> dict:
         )
 
         if response.status_code == 401:
-            return default_summary
+            return default_summary, None
 
         response.raise_for_status()
 
         data = response.json()
 
-        return data.get(
-            "summary",
-            default_summary,
-        )
+        return data.get("summary", default_summary), data.get("inventory_id")
 
     except requests.RequestException as error:
         print(f"Error loading report summary: {error}")
-        return default_summary
+        return default_summary, None
 
 
-# ============================================================
+def load_report_categories(inventory_id: str) -> dict[str, str] | None:
+
+    try:
+        response = authenticated_session().get(
+            f"{BACKEND_URL}/api/inventory/{inventory_id}/categories/",
+            timeout=5,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        if not data.get("success"):
+            raise ValueError(
+                "The categories endpoint returned an unsuccessful response."
+            )
+
+        return { #Returns a dict mapping category public ids to their names, filters out categories without public ids or names.
+            category["public_id"]: category["name"]
+            for category in data.get("categories", [])
+            if category.get("public_id") and category.get("name")
+        }
+
+    except (requests.RequestException, ValueError) as error:
+        print(f"Error loading report categories: {error}")
+        return None
+
+
 # REPORTS PAGE
 # ============================================================
-
 @ui.page("/reports")
 def reports_page():
 
-    ui.page_title(
-        "Reports | CoverWorth"
-    )
+    ui.page_title("Reports | CoverWorth")
 
     build_app_shell(
         "Reports",
@@ -243,87 +254,50 @@ def reports_page():
         ),
     )
 
-    summary = load_report_summary()
+    summary, inventory_id = load_report_data()
+    categories = load_report_categories(inventory_id) if inventory_id else {}
+    category_options = {"": "All Categories"}
+    if categories:
+        category_options.update(categories)
+    elif categories is None:
+        ui.notify(
+            "Could not load categories. The report filter is limited to all categories.",
+            type="warning",
+        )
 
-
-    # ========================================================
     # PAGE CONTENT
     # ========================================================
+    with ui.column().classes("reports-container " "page-content-frame " "p-7 gap-6"):
 
-    with ui.column().classes(
-        "reports-container "
-        "page-content-frame "
-        "p-7 gap-6"
-    ):
-
-
-        # ----------------------------------------------------
         # PAGE HEADER
         # ----------------------------------------------------
+        with ui.column().classes("gap-0"):
 
-        with ui.column().classes(
-            "gap-0"
-        ):
+            ui.label("Reports").classes("text-4xl " "font-bold " "tracking-tight")
 
-            ui.label(
-                "Reports"
-            ).classes(
-                "text-4xl "
-                "font-bold "
-                "tracking-tight"
-            )
-
-            ui.label(
-                "Create a record of your belongings and their value."
-            ).classes(
+            ui.label("Create a record of your belongings and their value.").classes(
                 "text-base muted"
             )
 
-
-        # ====================================================
         # MAIN REPORT LAYOUT
         # ====================================================
-
         with ui.grid().classes(
-            "reports-layout "
-            "w-full "
-            "grid-cols-[1.15fr_0.85fr] "
-            "gap-5"
+            "reports-layout " "w-full " "grid-cols-[1.15fr_0.85fr] " "gap-5"
         ):
 
-
-            # =================================================
             # LEFT SIDE - REPORT OPTIONS
             # =================================================
+            with ui.card().classes("reports-card " "w-full " "p-6 gap-6"):
 
-            with ui.card().classes(
-                "reports-card "
-                "w-full "
-                "p-6 gap-6"
-            ):
-
-
-                # ---------------------------------------------
                 # INVENTORY SUMMARY
                 # ---------------------------------------------
+                with ui.column().classes("w-full gap-3"):
 
-                with ui.column().classes(
-                    "w-full gap-3"
-                ):
-
-                    ui.label(
-                        "Inventory Summary"
-                    ).classes(
-                        "text-xl font-bold"
-                    )
+                    ui.label("Inventory Summary").classes("text-xl font-bold")
 
                     ui.label(
-                        "The current totals that will be used "
-                        "in your report."
-                    ).classes(
-                        "text-sm muted"
-                    )
-
+                        "The current totals that will be used " "in your report."
+                    ).classes("text-sm muted")
 
                     # Item count
                     with ui.row().classes(
@@ -334,39 +308,21 @@ def reports_page():
                         "p-4"
                     ):
 
-                        with ui.row().classes(
-                            "items-center gap-4"
-                        ):
+                        with ui.row().classes("items-center gap-4"):
 
-                            with ui.element(
-                                "div"
-                            ).classes(
-                                "summary-icon"
-                            ):
+                            with ui.element("div").classes("summary-icon"):
 
-                                ui.icon(
-                                    "inventory_2"
-                                ).classes(
-                                    "text-2xl "
-                                    "text-blue-600"
+                                ui.icon("inventory_2").classes(
+                                    "text-2xl " "text-blue-600"
                                 )
 
-                            with ui.column().classes(
-                                "gap-0"
-                            ):
+                            with ui.column().classes("gap-0"):
 
-                                ui.label(
-                                    f'{summary["total_items"]:,}'
-                                ).classes(
+                                ui.label(f'{summary["total_items"]:,}').classes(
                                     "summary-value"
                                 )
 
-                                ui.label(
-                                    "Items"
-                                ).classes(
-                                    "summary-label"
-                                )
-
+                                ui.label("Items").classes("summary-label")
 
                     # Estimated value
                     with ui.row().classes(
@@ -377,64 +333,33 @@ def reports_page():
                         "p-4"
                     ):
 
-                        with ui.row().classes(
-                            "items-center gap-4"
-                        ):
+                        with ui.row().classes("items-center gap-4"):
 
-                            with ui.element(
-                                "div"
-                            ).classes(
-                                "summary-icon"
-                            ):
+                            with ui.element("div").classes("summary-icon"):
 
-                                ui.icon(
-                                    "paid"
-                                ).classes(
-                                    "text-2xl "
-                                    "text-green-600"
-                                )
+                                ui.icon("paid").classes("text-2xl " "text-green-600")
 
-                            with ui.column().classes(
-                                "gap-0"
-                            ):
+                            with ui.column().classes("gap-0"):
 
-                                ui.label(
-                                    f'${summary["estimated_value"]:,.0f}'
-                                ).classes(
+                                ui.label(f'${summary["estimated_value"]:,.0f}').classes(
                                     "summary-value"
                                 )
 
-                                ui.label(
-                                    "Estimated Replacement Value"
-                                ).classes(
+                                ui.label("Estimated Replacement Value").classes(
                                     "summary-label"
                                 )
 
-
                 ui.separator()
 
-
-                # ---------------------------------------------
                 # INCLUDE OPTIONS
                 # ---------------------------------------------
+                with ui.column().classes("w-full gap-2"):
 
-                with ui.column().classes(
-                    "w-full gap-2"
-                ):
-
-                    ui.label(
-                        "Include"
-                    ).classes(
-                        "report-section-title"
-                    )
+                    ui.label("Include").classes("report-section-title")
 
                     ui.label(
-                        "Choose the information that should "
-                        "appear in the report."
-                    ).classes(
-                        "text-sm muted mb-1"
-                    )
-
+                        "Choose the information that should " "appear in the report."
+                    ).classes("text-sm muted mb-1")
 
                     include_photos = ui.checkbox(
                         "Item photos",
@@ -461,70 +386,39 @@ def reports_page():
                         value=True,
                     )
 
-
                 ui.separator()
 
-
-                # ---------------------------------------------
                 # FILTERS
                 # ---------------------------------------------
+                with ui.column().classes("w-full gap-3"):
 
-                with ui.column().classes(
-                    "w-full gap-3"
-                ):
+                    ui.label("Filter").classes("report-section-title")
 
-                    ui.label(
-                        "Filter"
-                    ).classes(
-                        "report-section-title"
-                    )
-
-                    ui.label(
-                        "Limit the report to a specific collection."
-                    ).classes(
+                    ui.label("Limit the report to a specific category.").classes(
                         "text-sm muted"
                     )
 
-                    collection_filter = ui.select(
-                        [
-                            "All Collections",
-                            "Electronics",
-                            "Watches",
-                            "Collectibles",
-                            "Furniture",
-                        ],
-                        value="All Collections",
-                        label="Collection",
-                    ).props(
-                        "outlined"
-                    ).classes(
-                        "filter-control w-full"
+                    category_filter = (
+                        ui.select(
+                            category_options,
+                            value="",
+                            label="Category",
+                        )
+                        .props("outlined")
+                        .classes("filter-control w-full")
                     )
-
 
                 ui.separator()
 
-
-                # ---------------------------------------------
                 # REPORT FORMAT
                 # ---------------------------------------------
+                with ui.column().classes("w-full gap-3"):
 
-                with ui.column().classes(
-                    "w-full gap-3"
-                ):
+                    ui.label("Report Format").classes("report-section-title")
 
-                    ui.label(
-                        "Report Format"
-                    ).classes(
-                        "report-section-title"
-                    )
-
-                    ui.label(
-                        "Choose how you want the report exported."
-                    ).classes(
+                    ui.label("Choose how you want the report exported.").classes(
                         "text-sm muted"
                     )
-
 
                     report_format = ui.radio(
                         {
@@ -532,97 +426,52 @@ def reports_page():
                             "CSV": "CSV",
                         },
                         value="PDF",
-                    ).props(
-                        "inline"
-                    )
-
+                    ).props("inline")
 
                     # PDF description
                     with ui.row().classes(
-                        "format-card "
-                        "w-full "
-                        "items-center "
-                        "gap-4"
+                        "format-card " "w-full " "items-center " "gap-4"
                     ).on(
                         "click",
                         lambda: report_format.set_value("PDF"),
                     ):
 
-                        with ui.element(
-                            "div"
-                        ).classes(
-                            "format-icon"
-                        ):
+                        with ui.element("div").classes("format-icon"):
 
-                            ui.icon(
-                                "picture_as_pdf"
-                            ).classes(
-                                "text-2xl text-red-600"
-                            )
+                            ui.icon("picture_as_pdf").classes("text-2xl text-red-600")
 
-                        with ui.column().classes(
-                            "gap-0"
-                        ):
+                        with ui.column().classes("gap-0"):
 
-                            ui.label(
-                                "PDF Report"
-                            ).classes(
-                                "font-semibold"
-                            )
+                            ui.label("PDF Report").classes("font-semibold")
 
                             ui.label(
                                 "Formatted document suitable "
                                 "for insurance or record keeping."
-                            ).classes(
-                                "text-sm muted"
-                            )
-
+                            ).classes("text-sm muted")
 
                     # CSV description
                     with ui.row().classes(
-                        "format-card "
-                        "w-full "
-                        "items-center "
-                        "gap-4"
+                        "format-card " "w-full " "items-center " "gap-4"
                     ).on(
                         "click",
                         lambda: report_format.set_value("CSV"),
                     ):
 
-                        with ui.element(
-                            "div"
-                        ).classes(
-                            "format-icon"
-                        ):
+                        with ui.element("div").classes("format-icon"):
 
-                            ui.icon(
-                                "table_view"
-                            ).classes(
-                                "text-2xl text-green-700"
-                            )
+                            ui.icon("table_view").classes("text-2xl text-green-700")
 
-                        with ui.column().classes(
-                            "gap-0"
-                        ):
+                        with ui.column().classes("gap-0"):
 
-                            ui.label(
-                                "CSV Spreadsheet"
-                            ).classes(
-                                "font-semibold"
-                            )
+                            ui.label("CSV Spreadsheet").classes("font-semibold")
 
                             ui.label(
                                 "Raw inventory data for use "
                                 "in Excel or another spreadsheet."
-                            ).classes(
-                                "text-sm muted"
-                            )
+                            ).classes("text-sm muted")
 
-
-                # ---------------------------------------------
                 # GENERATE BUTTON
                 # ---------------------------------------------
-
                 def generate_report():
 
                     selected_options = []
@@ -631,110 +480,63 @@ def reports_page():
                         selected_options.append("photos")
 
                     if include_purchase_prices.value:
-                        selected_options.append(
-                            "purchase prices"
-                        )
+                        selected_options.append("purchase prices")
 
                     if include_current_values.value:
-                        selected_options.append(
-                            "current valuations"
-                        )
+                        selected_options.append("current valuations")
 
                     if include_serial_numbers.value:
-                        selected_options.append(
-                            "serial numbers"
-                        )
+                        selected_options.append("serial numbers")
 
                     if include_receipts.value:
-                        selected_options.append(
-                            "receipts"
-                        )
+                        selected_options.append("receipts")
 
                     ui.notify(
                         (
                             f"{report_format.value} report ready "
                             f"to generate for "
-                            f"{collection_filter.value}."
+                            f"{category_options.get(category_filter.value, 'All Categories')}."
                         ),
                         type="positive",
                     )
 
-
-                with ui.row().classes(
-                    "w-full justify-end pt-2"
-                ):
+                with ui.row().classes("w-full justify-end pt-2"):
 
                     ui.button(
                         "Generate Report",
                         icon="description",
                         on_click=generate_report,
-                    ).props(
-                        "unelevated "
-                        "color=primary "
-                        "no-caps"
-                    ).classes(
+                    ).props("unelevated " "color=primary " "no-caps").classes(
                         "px-6 py-2 rounded-lg"
                     )
 
-
-            # =================================================
             # RIGHT SIDE - REPORT PREVIEW
             # =================================================
+            with ui.card().classes("reports-card " "w-full " "p-6 gap-5"):
 
-            with ui.card().classes(
-                "reports-card "
-                "w-full "
-                "p-6 gap-5"
-            ):
+                with ui.column().classes("gap-0"):
 
-                with ui.column().classes(
-                    "gap-0"
-                ):
+                    ui.label("Report Preview").classes("text-xl font-bold")
 
-                    ui.label(
-                        "Report Preview"
-                    ).classes(
-                        "text-xl font-bold"
-                    )
-
-                    ui.label(
-                        "Example layout of the generated report."
-                    ).classes(
+                    ui.label("Example layout of the generated report.").classes(
                         "text-sm muted"
                     )
 
-
-                # ---------------------------------------------
                 # PREVIEW AREA
                 # ---------------------------------------------
-
                 with ui.column().classes(
-                    "report-preview "
-                    "w-full "
-                    "items-center "
-                    "p-6"
+                    "report-preview " "w-full " "items-center " "p-6"
                 ):
-
 
                     # Mock document
                     with ui.column().classes(
-                        "preview-document "
-                        "w-full "
-                        "max-w-[430px] "
-                        "p-6 gap-4"
+                        "preview-document " "w-full " "max-w-[430px] " "p-6 gap-4"
                     ):
 
-
                         # Document heading
-                        with ui.row().classes(
-                            "w-full "
-                            "items-center "
-                            "gap-3"
-                        ):
+                        with ui.row().classes("w-full " "items-center " "gap-3"):
 
-                            with ui.element(
-                                "div"
-                            ).classes(
+                            with ui.element("div").classes(
                                 "w-10 h-10 "
                                 "rounded-lg "
                                 "bg-blue-50 "
@@ -743,47 +545,24 @@ def reports_page():
                                 "justify-center"
                             ):
 
-                                ui.icon(
-                                    "inventory_2"
-                                ).classes(
-                                    "text-xl "
-                                    "text-blue-600"
+                                ui.icon("inventory_2").classes(
+                                    "text-xl " "text-blue-600"
                                 )
 
-                            with ui.column().classes(
-                                "gap-0"
-                            ):
+                            with ui.column().classes("gap-0"):
 
-                                ui.label(
-                                    "CoverWorth"
-                                ).classes(
-                                    "text-lg font-bold"
-                                )
+                                ui.label("CoverWorth").classes("text-lg font-bold")
 
-                                ui.label(
-                                    "Inventory Report"
-                                ).classes(
-                                    "text-xs muted"
-                                )
-
+                                ui.label("Inventory Report").classes("text-xs muted")
 
                         ui.separator()
 
-
                         # Summary
-                        with ui.column().classes(
-                            "w-full gap-1"
-                        ):
+                        with ui.column().classes("w-full gap-1"):
 
-                            ui.label(
-                                "Inventory Summary"
-                            ).classes(
-                                "text-sm font-bold"
-                            )
+                            ui.label("Inventory Summary").classes("text-sm font-bold")
 
-                            ui.label(
-                                f'{summary["total_items"]:,} items'
-                            ).classes(
+                            ui.label(f'{summary["total_items"]:,} items').classes(
                                 "text-xs text-slate-600"
                             )
 
@@ -792,10 +571,7 @@ def reports_page():
                                     "Estimated value: "
                                     f'${summary["estimated_value"]:,.0f}'
                                 )
-                            ).classes(
-                                "text-xs text-slate-600"
-                            )
-
+                            ).classes("text-xs text-slate-600")
 
                         # Fake table header
                         with ui.row().classes(
@@ -807,18 +583,9 @@ def reports_page():
                             "px-3 py-2"
                         ):
 
-                            ui.label(
-                                "Item"
-                            ).classes(
-                                "text-xs font-semibold"
-                            )
+                            ui.label("Item").classes("text-xs font-semibold")
 
-                            ui.label(
-                                "Value"
-                            ).classes(
-                                "text-xs font-semibold"
-                            )
-
+                            ui.label("Value").classes("text-xs font-semibold")
 
                         # Fake document rows
                         for width in (
@@ -830,76 +597,36 @@ def reports_page():
                         ):
 
                             with ui.row().classes(
-                                "w-full "
-                                "items-center "
-                                "justify-between "
-                                "gap-4"
+                                "w-full " "items-center " "justify-between " "gap-4"
                             ):
 
-                                ui.element(
-                                    "div"
-                                ).classes(
-                                    "preview-line"
-                                ).style(
+                                ui.element("div").classes("preview-line").style(
                                     f"width: {width};"
                                 )
 
-                                ui.element(
-                                    "div"
-                                ).classes(
-                                    "preview-line "
-                                    "w-[55px]"
-                                )
-
+                                ui.element("div").classes("preview-line " "w-[55px]")
 
                         ui.separator()
 
-
                         # Footer
-                        ui.label(
-                            "Generated by CoverWorth"
-                        ).classes(
-                            "text-[10px] "
-                            "text-slate-400 "
-                            "self-center"
+                        ui.label("Generated by CoverWorth").classes(
+                            "text-[10px] " "text-slate-400 " "self-center"
                         )
 
-
-                # ---------------------------------------------
                 # REPORT PURPOSE NOTE
                 # ---------------------------------------------
-
                 with ui.row().classes(
-                    "w-full "
-                    "items-start "
-                    "gap-3 "
-                    "bg-blue-50 "
-                    "rounded-lg "
-                    "p-4"
+                    "w-full " "items-start " "gap-3 " "bg-blue-50 " "rounded-lg " "p-4"
                 ):
 
-                    ui.icon(
-                        "info"
-                    ).classes(
-                        "text-xl text-blue-600"
-                    )
+                    ui.icon("info").classes("text-xl text-blue-600")
 
-                    with ui.column().classes(
-                        "gap-0"
-                    ):
+                    with ui.column().classes("gap-0"):
 
-                        ui.label(
-                            "Keep a current record"
-                        ).classes(
-                            "text-sm "
-                            "font-semibold "
-                            "text-blue-900"
+                        ui.label("Keep a current record").classes(
+                            "text-sm " "font-semibold " "text-blue-900"
                         )
 
                         ui.label(
-                            "Reports can provide a snapshot "
-                            "of your belongings, purchase "
-                            "information, and current values."
-                        ).classes(
-                            "text-xs text-blue-800"
-                        )
+                            "Reports can provide a snapshot of your belongings, purchase information, and current values."
+                        ).classes("text-xs text-blue-800")
