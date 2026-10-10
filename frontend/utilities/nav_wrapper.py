@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from nicegui import ui
 
+#TODO : Replace user related things with dynamic username from backend
 
 ui.add_css("""
     .sidebar,
@@ -85,7 +86,7 @@ def _navigation_item(
 
 def build_app_shell(
     active_page: str,
-    username: str = "Kevin M.",
+    username: str = "Kevin M.", 
     on_sign_out: Callable[[], object] | None = None,
 ) -> None:
     with ui.left_drawer(
