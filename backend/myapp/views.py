@@ -2,8 +2,10 @@ import json
 from decimal import Decimal
 
 from django.contrib.auth import authenticate, login, logout
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -268,7 +270,7 @@ def add_item_api(request, inventory_id):
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET", "POST"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
@@ -345,7 +347,7 @@ def edit_item_api(request, item_id):
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET"])
 def inventory_detail_api(request, inventory_id):
     """API endpoint for getting all items in an inventory"""
@@ -392,7 +394,7 @@ def inventory_detail_api(request, inventory_id):
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET"])
 def item_detail_api(request, item_id):
     """API endpoint for getting a single item's details"""
@@ -408,7 +410,7 @@ def item_detail_api(request, item_id):
                 {'success': False, 'error': 'You don\'t have access to this item.'},
                 status=403
             )
-        
+
         return JsonResponse({
             'success': True,
             'item': {
@@ -434,9 +436,291 @@ def item_detail_api(request, item_id):
                 'name': item.inventory.name,
             },
         })
-    
+
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e),
         }, status=500)
+
+
+def category_payload(category):
+    items = list(
+        category.items.filter(archived_at__isnull=True).order_by("-updated_at")
+    )
+
+    total_value = sum(
+        (item.effective_value if item.effective_value is not None else Decimal("0.00"))
+        for item in items
+    )
+
+    latest_item_update = items[0].updated_at if items else None
+
+    updated_at = category.updated_at
+
+    if latest_item_update is not None and latest_item_update > updated_at:
+        updated_at = latest_item_update
+
+    return {
+        "public_id": str(category.public_id),
+        "name": category.name,
+        "description": category.description,
+        "item_count": len(items),
+        "total_value": float(total_value),
+        "updated_at": updated_at.isoformat(),
+    }
+
+
+@require_http_methods(["GET", "POST"])
+def category_list_api(request, inventory_id):
+    """
+    GET:
+        Return all active categories for one inventory.
+
+    POST:
+        Create a new category in that inventory.
+    """
+
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    inventory = get_object_or_404(
+        Inventory,
+        public_id=inventory_id,
+        archived_at__isnull=True,
+    )
+
+    if inventory.owner != request.user:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": ("You can only manage categories " "for your own inventory."),
+            },
+            status=403,
+        )
+
+    if request.method == "GET":
+
+        categories = Category.objects.filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).order_by("name")
+
+        return JsonResponse(
+            {
+                "success": True,
+                "inventory": {
+                    "public_id": str(inventory.public_id),
+                    "name": inventory.name,
+                },
+                "categories": [category_payload(category) for category in categories],
+            }
+        )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Invalid request body.",
+            },
+            status=400,
+        )
+
+    name = str(payload.get("name", "")).strip()
+
+    description = str(payload.get("description", "")).strip()
+
+    if not name:
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": {
+                    "name": "Category name is required.",
+                },
+            },
+            status=400,
+        )
+
+    category = Category(
+        inventory=inventory,
+        name=name,
+        description=description,
+    )
+
+    try:
+        category.full_clean()
+        category.save()
+
+    except ValidationError as error:
+
+        errors = (
+            error.message_dict
+            if hasattr(error, "message_dict")
+            else {"category": error.messages}
+        )
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": errors,
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "category": category_payload(category),
+        },
+        status=201,
+    )
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def category_detail_api(
+    request,
+    category_id,
+):
+    """
+    GET:
+        Return one category.
+
+    PUT:
+        Update its name / description.
+
+    DELETE:
+        Archive the category and move its
+        active items to Uncategorized.
+    """
+
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    category = get_object_or_404(
+        Category,
+        public_id=category_id,
+        archived_at__isnull=True,
+    )
+
+    if category.inventory.owner != request.user:
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": ("You can only manage categories " "for your own inventory."),
+            },
+            status=403,
+        )
+
+    if request.method == "GET":
+
+        return JsonResponse(
+            {
+                "success": True,
+                "category": category_payload(category),
+            }
+        )
+
+    if request.method == "DELETE":
+
+        affected_items = category.items.filter(archived_at__isnull=True).count()
+
+        category.items.filter(archived_at__isnull=True).update(category=None)
+
+        category.archived_at = timezone.now()
+
+        category.save(
+            update_fields=[
+                "archived_at",
+                "updated_at",
+            ]
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": (f'Category "{category.name}" ' "was deleted."),
+                "items_uncategorized": (affected_items),
+            }
+        )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Invalid request body.",
+            },
+            status=400,
+        )
+
+    name = str(
+        payload.get(
+            "name",
+            category.name,
+        )
+    ).strip()
+
+    description = str(
+        payload.get(
+            "description",
+            category.description,
+        )
+    ).strip()
+
+    if not name:
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": {
+                    "name": ("Category name " "is required."),
+                },
+            },
+            status=400,
+        )
+
+    category.name = name
+    category.description = description
+
+    try:
+        category.full_clean()
+        category.save()
+
+    except ValidationError as error:
+
+        errors = (
+            error.message_dict
+            if hasattr(error, "message_dict")
+            else {"category": error.messages}
+        )
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": errors,
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "category": category_payload(category),
+        }
+    )

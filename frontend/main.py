@@ -8,6 +8,9 @@ from pages.dashboard import dashboard_page
 from pages.add_item import add_item_page
 from pages.edit_item import edit_item_page
 from pages.inventory import inventory_page
+from pages.valuations import valuations_page
+from pages.reports import reports_page
+from pages.categories import categories_page
 
 ui.run(
     host=os.getenv("NICEGUI_HOST", "127.0.0.1"),
