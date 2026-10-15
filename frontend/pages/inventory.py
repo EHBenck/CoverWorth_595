@@ -1,7 +1,11 @@
+import requests
 from nicegui import ui
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
-from utilities.mockdata import INVENTORY_ITEMS
+from backend_client import (
+    BACKEND_URL,
+    authenticated_session,
+)
 
 
 
@@ -187,16 +191,118 @@ ui.add_css("""
 """, shared=True)
 
 
+def fetch_inventory_id() -> str | None:
+    try:
+        response = authenticated_session().get(
+            f"{BACKEND_URL}/api/dashboard/",
+            timeout=5,
+        )
+
+        if response.status_code == 401:
+            return None
+
+        response.raise_for_status()
+
+        return response.json().get("inventory_id")
+
+    except requests.RequestException as error:
+        print("Error fetching inventory ID:", error)
+        return None
+
+
+
+def fetch_inventory_items(inventory_id: str) -> list[dict]:
+    try:
+        response = authenticated_session().get(
+            f"{BACKEND_URL.rstrip('/')}/api/inventory/{inventory_id}/",
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        items = data.get("items", [])
+
+        normalized_items = []
+
+        for item in items:
+            estimated_value = item.get("current_estimated_amount")
+
+            if estimated_value is None:
+                estimated_value = item.get("manual_value")
+
+            if estimated_value is None:
+                estimated_value = item.get("estimated_value")
+
+            normalized_items.append({
+                **item,
+                "name": item.get("name") or "Unnamed Item",
+                "category": item.get("category") or "Uncategorized",
+                "location": item.get("location") or "",
+                "estimated_value": (
+                    float(estimated_value)
+                    if estimated_value is not None
+                    else 0.0
+                ),
+                "status": (
+                    "Current"
+                    if estimated_value is not None
+                    else "Review"
+                ),
+                "icon": item.get("icon") or "inventory_2",
+            })
+
+        return normalized_items
+
+    except (requests.RequestException, ValueError, TypeError) as error:
+        print(f"[INVENTORY] Failed to fetch items: {error}")
+        return []
+
+
+
+def fetch_inventory_categories(inventory_id: str) -> list[dict]:
+    try:
+        response = authenticated_session().get(
+            f"{BACKEND_URL}/api/inventory/{inventory_id}/categories/",
+            timeout=5,
+        )
+
+        response.raise_for_status()
+
+        return response.json().get("categories", [])
+
+    except requests.RequestException as error:
+        print("Error fetching categories:", error)
+        return []
 
 # INVENTORY PAGE
 @ui.page("/inventory")
-def inventory_page():
+async def inventory_page():
+    await ui.context.client.connected()
 
     ui.page_title(
         "Inventory | CoverWorth"
     )
 
     build_app_shell("Inventory")
+
+    inventory_id = fetch_inventory_id()
+
+    if not inventory_id:
+        ui.label(
+            "Could not load your inventory. "
+            "Please sign in or check your backend connection."
+        ).classes("text-red-600 p-6")
+        return
+
+    state = {
+        "items": fetch_inventory_items(inventory_id),
+        "categories": fetch_inventory_categories(inventory_id),
+    }
+
+    def reload_inventory():
+        state["items"] = fetch_inventory_items(inventory_id)
+        state["categories"] = fetch_inventory_categories(inventory_id)
+        inventory_rows.refresh()
 
 
     # MAIN PAGE CONTENT
@@ -231,10 +337,9 @@ def inventory_page():
             ui.button(
                 "Add Item",
                 icon="add",
-                on_click=lambda:
-                ui.notify(
-                    "Add Item page will be connected later."
-                ),
+                on_click=lambda: ui.navigate.to(
+                    f"/add-item/{inventory_id}?return_to=%2Finventory"
+                )
             ).props(
                 "unelevated "
                 "color=primary "
@@ -277,64 +382,57 @@ def inventory_page():
                 )
 
                 # CATEGORY FILTER
+                category_options = { 
+                    "All Categories": "All Categories",
+                    **{
+                        category["name"]: category["name"]
+                        for category in state["categories"]
+                    },
+                }
+
                 category_filter = ui.select(
-                    [
-                        "All Categories",
-                        "Electronics",
-                        "Watches",
-                        "Art",
-                        "Furniture",
-                        "Sports",
-                        "Collectibles",
-                        "Outdoor",
-                    ],
+                    category_options,
                     value="All Categories",
-                    on_change=lambda _:
-                    refresh_inventory(),
+                    on_change=lambda _: refresh_inventory(),
                 ).props(
                     "outlined dense"
                 ).classes(
                     "filter-control w-[190px]"
                 )
 
-                # LOCATION FILTER
+                # LOCATION/STATUS FILTER
+                locations = sorted({
+                    item["location"]
+                    for item in state["items"]
+                    if item.get("location")
+                })
+
+                statuses = sorted({
+                    item["status"]
+                    for item in state["items"]
+                    if item.get("status")
+                })
+
                 location_filter = ui.select(
-                    [
-                        "All Locations",
-                        "Office",
-                        "Bedroom",
-                        "Living Room",
-                        "Garage",
-                    ],
+                    ["All Locations", *locations],
                     value="All Locations",
-                    on_change=lambda _:
-                    refresh_inventory(),
-                ).props(
-                    "outlined dense"
-                ).classes(
+                    on_change=lambda _: refresh_inventory(),
+                ).props("outlined dense").classes(
                     "filter-control w-[190px]"
                 )
 
-                # STATUS FILTER
                 status_filter = ui.select(
-                    [
-                        "All Statuses",
-                        "Current",
-                        "Review",
-                    ],
+                    ["All Statuses", *statuses],
                     value="All Statuses",
-                    on_change=lambda _:
-                    refresh_inventory(),
-                ).props(
-                    "outlined dense"
-                ).classes(
+                    on_change=lambda _: refresh_inventory(),
+                ).props("outlined dense").classes(
                     "filter-control w-[170px]"
                 )
 
-                view_mode = add_view_mode_toggle(
-                    lambda: inventory_rows.refresh()
-                )
-
+            view_mode = add_view_mode_toggle(
+                lambda: inventory_rows.refresh()
+            )
+            
             # INVENTORY TABLE
             @ui.refreshable
             def inventory_rows():
@@ -359,7 +457,7 @@ def inventory_page():
                 # FILTER ITEMS
                 filtered_items = []
 
-                for item in INVENTORY_ITEMS:
+                for item in state["items"]:
 
                     # SEARCH
                     if search_text:
@@ -466,7 +564,7 @@ def inventory_page():
                     ):
                         ui.label(
                             f"Showing {len(filtered_items)} "
-                            f"of {len(INVENTORY_ITEMS)} items"
+                            f"of {len(state['items'])} items"
                         ).classes("text-sm muted")
 
                         with ui.row().classes("items-center gap-4"):

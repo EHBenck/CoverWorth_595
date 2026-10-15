@@ -172,11 +172,11 @@ def load_add_item_options(
 # PAGE
 # ============================================================
 @ui.page("/add-item/{inventory_id}")
-def add_item_page(
+async def add_item_page(
     inventory_id: str,
 ):
-
-    if not app.storage.user.get("auth_cookies"):
+    await ui.context.client.connected()
+    if not app.storage.tab.get("auth_cookies"):
         ui.navigate.to("/")
         return
 
@@ -401,19 +401,23 @@ def add_item_page(
                         purchase_date_input = (
                             ui.input(
                                 label="Date Acquired *",
-                                value=(date.today().isoformat()),
+                                value=date.today().isoformat(),
                             )
-                            .props("outlined type=date")
+                            .props(f'outlined type=date max="{date.today().isoformat()}"')
                             .classes("form-control w-full")
-                        )
+                        )       
 
                         purchase_amount_input = (
                             ui.number(
                                 label=("Purchase Price ($) *"),
                                 min=0,
                                 step=0.01,
+                                validation={
+                                    "Purchase price cannot be negative.": lambda value: 
+                                        value is None or value >= 0,
+                                }
                             )
-                            .props("outlined")
+                            .props("outlined min=0")
                             .classes("form-control w-full")
                         )
 
