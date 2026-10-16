@@ -1,21 +1,24 @@
-import json
+import requests
 from decimal import Decimal
+from uuid import UUID
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
+
 from myapp.forms import ItemForm
-from myapp.models import Category, Inventory, Item
-from uuid import UUID
-from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from myapp.models import Category, Inventory, Item, ValuationRun
+
+from inventory_manager.pipeline.ebay_client import search_ebay
+from inventory_manager.pipeline.poc_valuation import estimate
 
 @ensure_csrf_cookie
 def auth_csrf(request):
@@ -746,6 +749,139 @@ def item_detail_api(request, item_id):
             'success': False,
             'error': str(e),
         }, status=500)
+
+@require_POST
+def item_valuation_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    query = " ".join(
+        part.strip()
+        for part in [item.name, item.brand, item.model_number]
+        if part and part.strip()
+    )
+    condition = (
+        "new"
+        if item.condition == "new"
+        else "used"
+    )
+    try: 
+        rows = search_ebay(query)
+        result = estimate(rows, query, want_condition=condition)
+    except (requests.exceptions.RequestException, RuntimeError):
+        return JsonResponse({"error": "Unable to retrieve eBay listings"}, status=502,)
+    
+    valuation_run = None
+
+    if result["estimate"] is not None:
+        valuation_run = ValuationRun.objects.create(
+            item=item,
+            requested_by=request.user,
+            valuation_type="automated",
+            status="success",
+            estimated_amount=Decimal(str(result["estimate"])),
+            currency="USD",
+            range_low=(
+                Decimal(str(result["low"]))
+                if result.get("low") is not None
+                else None
+            ),
+            range_high=(
+                Decimal(str(result["high"]))
+                if result.get("high") is not None
+                else None
+            ),
+            sample_count=result["n"],
+            algorithm_version="poc_v1",
+            input_snapshot={
+                "query": query,
+                "condition": condition,
+                "source": "ebay",
+                "confidence": result["confidence"],
+            },
+            started_at=timezone.now(),
+            completed_at=timezone.now(),
+        )
+
+    return JsonResponse({
+        "item_id": str(item.public_id),
+        "item_name": item.name,
+        "query": query,
+        "estimate": result["estimate"],
+        "range_low": result.get("low"),
+        "range_high": result.get("high"),
+        "sample_count": result["n"],
+        "confidence": result["confidence"],
+        "source": "ebay",
+        "currency": "USD",
+        "valuation_run_id": (
+            str(valuation_run.public_id)
+            if valuation_run is not None
+            else None
+        ),
+    })
+
+
+@require_POST
+def accept_valuation_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    try:
+        data = json.loads(request.body)
+        run_id = data.get("valuation_run_id")
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+        return JsonResponse(
+            {"error": "Invalid JSON request."},
+            status=400,
+        )
+
+    if not run_id:
+        return JsonResponse(
+            {"error": "valuation_run_id is required."},
+            status=400,
+        )
+
+    item = get_object_or_404(
+        Item,
+        public_id=item_id,
+        inventory__owner=request.user,
+        archived_at__isnull=True,
+    )
+
+    valuation_run = get_object_or_404(
+        ValuationRun,
+        public_id=run_id,
+        item=item,
+        status="success",
+    )
+
+    if valuation_run.estimated_amount is None:
+        return JsonResponse(
+            {"error": "This valuation has no estimate."},
+            status=400,
+        )
+
+    item.current_estimated_amount = valuation_run.estimated_amount
+    item.valuation_date = timezone.now()
+    item.save(
+        update_fields=[
+            "current_estimated_amount",
+            "valuation_date",
+            "updated_at",
+        ]
+    )
+
+    return JsonResponse({
+        "success": True,
+        "item_id": str(item.public_id),
+        "estimated_value": float(item.current_estimated_amount),
+        "valuation_run_id": str(valuation_run.public_id),
+        "valuation_date": item.valuation_date.isoformat(),
+    })
 
 
 def category_payload(category):
