@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import app, ui
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from utilities.mockdata import INVENTORY_ITEMS
@@ -191,6 +191,10 @@ ui.add_css("""
 # INVENTORY PAGE
 @ui.page("/inventory")
 def inventory_page():
+
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
 
     ui.page_title(
         "Inventory | CoverWorth"

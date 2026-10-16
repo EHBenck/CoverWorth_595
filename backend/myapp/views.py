@@ -1,8 +1,11 @@
 import json
 from decimal import Decimal
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -44,6 +47,86 @@ def auth_login(request):
 
     login(request, user)
     return JsonResponse({"authenticated": True, "username": user.get_username()})
+
+
+@require_POST
+def auth_register(request):
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    fields = {}
+    for name in ("first_name", "last_name", "email", "username", "password", "password_confirm"):
+        value = payload.get(name, "")
+        if not isinstance(value, str):
+            value = ""
+        fields[name] = value if name.startswith("password") else value.strip()
+
+    errors = {}
+    labels = {
+        "first_name": "First name",
+        "last_name": "Last name",
+        "email": "Email",
+        "username": "Username",
+        "password": "Password",
+        "password_confirm": "Password confirmation",
+    }
+    for name, label in labels.items():
+        if not fields[name]:
+            errors[name] = [f"{label} is required."]
+
+    User = get_user_model()
+
+    if fields["email"] and "email" not in errors:
+        try:
+            validate_email(fields["email"])
+        except ValidationError:
+            errors["email"] = ["Enter a valid email address."]
+        else:
+            if User.objects.filter(email__iexact=fields["email"]).exists():
+                errors["email"] = ["An account with this email already exists."]
+
+    if fields["username"] and User.objects.filter(username__iexact=fields["username"]).exists():
+        errors["username"] = ["This username is already taken."]
+
+    if fields["password"] and fields["password_confirm"] and fields["password"] != fields["password_confirm"]:
+        errors["password_confirm"] = ["Passwords do not match."]
+
+    if fields["password"] and "password_confirm" not in errors:
+        candidate = User(
+            username=fields["username"],
+            email=fields["email"],
+            first_name=fields["first_name"],
+            last_name=fields["last_name"],
+        )
+        try:
+            validate_password(fields["password"], user=candidate)
+        except ValidationError as e:
+            errors["password"] = list(e.messages)
+
+    if errors:
+        first_error = next(iter(errors.values()))[0]
+        return JsonResponse({"error": first_error, "errors": errors}, status=400)
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=fields["username"],
+            email=fields["email"],
+            password=fields["password"],
+            first_name=fields["first_name"],
+            last_name=fields["last_name"],
+        )
+        Inventory.objects.create(owner=user, name="My Inventory")
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return JsonResponse(
+        {"authenticated": True, "username": user.get_username()},
+        status=201,
+    )
 
 
 @require_POST

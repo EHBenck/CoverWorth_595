@@ -80,6 +80,12 @@ def show_login_page(error_message=""):
                 "unelevated color=primary no-caps"
             ).classes("w-full")
 
+            with ui.row().classes("w-full items-center justify-center gap-1"):
+                ui.label("Don't have an account?").classes("text-sm text-grey-7")
+                ui.button("Register", on_click=lambda: ui.navigate.to("/register")).props(
+                    "flat dense color=primary no-caps"
+                )
+
 
 async def sign_out():
     session = authenticated_session()

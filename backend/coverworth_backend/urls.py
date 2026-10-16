@@ -74,6 +74,7 @@ urlpatterns = [
     path("api/health/", health_check, name="health-check"),
     path("api/auth/csrf/", views.auth_csrf, name="auth-csrf"),
     path("api/auth/login/", views.auth_login, name="auth-login"),
+    path("api/auth/register/", views.auth_register, name="auth-register"),
     path("api/auth/logout/", views.auth_logout, name="auth-logout"),
     path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
     path("api/items/", views.item_list, name="item-list"),

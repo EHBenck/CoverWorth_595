@@ -244,6 +244,10 @@ def load_report_categories(inventory_id: str) -> dict[str, str] | None:
 @ui.page("/reports")
 def reports_page():
 
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
+
     ui.page_title("Reports | CoverWorth")
 
     build_app_shell(
