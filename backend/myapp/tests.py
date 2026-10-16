@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-
+from myapp.test_integration import FrontendClient, PASSWORD
 from myapp.models import Category, Inventory, Item
 
 
@@ -294,3 +294,147 @@ class AuthenticationAPITestCase(TestCase):
         response = self.client.get("/api/auth/login/")
 
         self.assertEqual(response.status_code, 405)
+
+
+class RegistrationAPITestCase(TestCase):
+    def setUp(self):
+        self.payload = {
+            "first_name": "Bob",
+            "last_name": "Smith",
+            "email": "bob@example.com",
+            "username": "bob",
+            "password": "Sturdy-passphrase-42",
+            "password_confirm": "Sturdy-passphrase-42",
+        }
+
+    def register(self, **overrides):
+        return self.client.post(
+            "/api/auth/register/",
+            data={**self.payload, **overrides},
+            content_type="application/json",
+        )
+
+    def test_register_creates_user_inventory_and_session(self):
+        response = self.register()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["username"], "bob")
+
+        user = User.objects.get(username="bob")
+        self.assertEqual(user.first_name, "Bob")
+        self.assertEqual(user.last_name, "Smith")
+        self.assertEqual(user.email, "bob@example.com")
+        self.assertTrue(user.check_password("Sturdy-passphrase-42"))
+        self.assertTrue(Inventory.objects.filter(owner=user).exists())
+
+        dashboard = self.client.get("/api/dashboard/")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIsNotNone(dashboard.json()["inventory_id"])
+
+    def test_register_rejects_mismatched_passwords(self):
+        response = self.register(password_confirm="Different-passphrase-42")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("password_confirm", response.json()["errors"])
+        self.assertFalse(User.objects.filter(username="bob").exists())
+
+    def test_register_rejects_missing_fields(self):
+        response = self.register(first_name="", email="")
+
+        self.assertEqual(response.status_code, 400)
+        errors = response.json()["errors"]
+        self.assertIn("first_name", errors)
+        self.assertIn("email", errors)
+
+    def test_register_rejects_duplicate_username_and_email(self):
+        User.objects.create_user(username="Bob", email="BOB@example.com", password="x")
+
+        response = self.register()
+
+        self.assertEqual(response.status_code, 400)
+        errors = response.json()["errors"]
+        self.assertIn("username", errors)
+        self.assertIn("email", errors)
+
+    def test_register_rejects_invalid_email(self):
+        response = self.register(email="not-an-email")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.json()["errors"])
+
+    def test_register_rejects_weak_password(self):
+        response = self.register(password="123", password_confirm="123")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("password", response.json()["errors"])
+
+    def test_register_requires_post(self):
+        response = self.client.get("/api/auth/register/")
+
+        self.assertEqual(response.status_code, 405)
+
+class InventorySwitchingTestCase(TestCase):
+
+    def setUp(self):
+        self.frontend = FrontendClient()
+        self.frontend.register("switchuser")
+
+        self.user = User.objects.get(username="switchuser")
+        self.home = Inventory.objects.get(owner=self.user)
+        self.office = Inventory.objects.create(
+            owner=self.user,
+            name="Office",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="otheruser",
+            password=PASSWORD,
+        )
+        self.other_inventory = Inventory.objects.create(
+            owner=self.other_user,
+            name="Private",
+        )
+
+        Item.objects.create(
+            inventory=self.home,
+            name="Home Item",
+            manual_value=Decimal("100.00"),
+        )
+        Item.objects.create(
+            inventory=self.office,
+            name="Office Item",
+            manual_value=Decimal("900.00"),
+        )
+
+    def test_inventory_switching(self):
+        response = self.frontend.post_json(
+            "/api/inventories/select/",
+            {"inventory_id": str(self.office.public_id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        dashboard = self.frontend.get("/api/dashboard/").json()
+
+        self.assertEqual(
+            dashboard["inventory_id"],
+            str(self.office.public_id),
+        )
+        self.assertEqual(
+            dashboard["summary"]["estimated_value"],
+            900.0,
+        )
+
+        items = self.frontend.get("/api/items/").json()["items"]
+        self.assertEqual(
+            [item["name"] for item in items],
+            ["Office Item"],
+        )
+
+    def test_cannot_select_another_users_inventory(self):
+        response = self.frontend.post_json(
+            "/api/inventories/select/",
+            {"inventory_id": str(self.other_inventory.public_id)},
+        )
+
+        self.assertEqual(response.status_code, 404)

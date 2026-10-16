@@ -1,15 +1,25 @@
 import json
+import requests
 from decimal import Decimal
+from uuid import UUID
 
-from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from myapp.forms import ItemForm
-from myapp.models import Category, Inventory, Item
+from myapp.models import Category, Inventory, Item, ValuationRun
 
+from inventory_manager.pipeline.ebay_client import search_ebay
+from inventory_manager.pipeline.poc_valuation import estimate
 
 @ensure_csrf_cookie
 def auth_csrf(request):
@@ -45,27 +55,302 @@ def auth_login(request):
 
 
 @require_POST
+def auth_register(request):
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    fields = {}
+    for name in ("first_name", "last_name", "email", "username", "password", "password_confirm"):
+        value = payload.get(name, "")
+        if not isinstance(value, str):
+            value = ""
+        fields[name] = value if name.startswith("password") else value.strip()
+
+    errors = {}
+    labels = {
+        "first_name": "First name",
+        "last_name": "Last name",
+        "email": "Email",
+        "username": "Username",
+        "password": "Password",
+        "password_confirm": "Password confirmation",
+    }
+    for name, label in labels.items():
+        if not fields[name]:
+            errors[name] = [f"{label} is required."]
+
+    User = get_user_model()
+
+    if fields["email"] and "email" not in errors:
+        try:
+            validate_email(fields["email"])
+        except ValidationError:
+            errors["email"] = ["Enter a valid email address."]
+        else:
+            if User.objects.filter(email__iexact=fields["email"]).exists():
+                errors["email"] = ["An account with this email already exists."]
+
+    if fields["username"] and User.objects.filter(username__iexact=fields["username"]).exists():
+        errors["username"] = ["This username is already taken."]
+
+    if fields["password"] and fields["password_confirm"] and fields["password"] != fields["password_confirm"]:
+        errors["password_confirm"] = ["Passwords do not match."]
+
+    if fields["password"] and "password_confirm" not in errors:
+        candidate = User(
+            username=fields["username"],
+            email=fields["email"],
+            first_name=fields["first_name"],
+            last_name=fields["last_name"],
+        )
+        try:
+            validate_password(fields["password"], user=candidate)
+        except ValidationError as e:
+            errors["password"] = list(e.messages)
+
+    if errors:
+        first_error = next(iter(errors.values()))[0]
+        return JsonResponse({"error": first_error, "errors": errors}, status=400)
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=fields["username"],
+            email=fields["email"],
+            password=fields["password"],
+            first_name=fields["first_name"],
+            last_name=fields["last_name"],
+        )
+        Inventory.objects.create(owner=user, name="My Inventory")
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return JsonResponse(
+        {"authenticated": True, "username": user.get_username()},
+        status=201,
+    )
+
+
+@require_POST
 def auth_logout(request):
     logout(request)
     return JsonResponse({"authenticated": False})
 
+ACTIVE_INVENTORY_KEY = "active_inventory_id"
+
+
+def _active_inventory(request):
+    inventories = Inventory.objects.filter(
+        owner=request.user,
+        archived_at__isnull=True,
+    ).order_by("created_at", "pk")
+
+    saved_id = request.session.get(ACTIVE_INVENTORY_KEY)
+    inventory = None
+
+    if saved_id:
+        try:
+            inventory = inventories.filter(
+                public_id=UUID(str(saved_id))
+            ).first()
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+    if inventory is None:
+        inventory = inventories.first()
+
+        if inventory:
+            request.session[ACTIVE_INVENTORY_KEY] = str(
+                inventory.public_id
+            )
+        else:
+            request.session.pop(ACTIVE_INVENTORY_KEY, None)
+
+    return inventory
+
+
+@require_http_methods(["GET", "POST"])
+def inventories_api(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    if request.method == "GET":
+        active = _active_inventory(request)
+
+        inventories = (
+            Inventory.objects
+            .filter(
+                owner=request.user,
+                archived_at__isnull=True,
+            )
+            .annotate(
+                item_count=Count(
+                    "items",
+                    filter=Q(items__archived_at__isnull=True),
+                )
+            )
+            .order_by("created_at", "pk")
+        )
+
+        return JsonResponse({
+            "success": True,
+            "active_inventory_id": (
+                str(active.public_id) if active else None
+            ),
+            "inventories": [
+                {
+                    "public_id": str(inv.public_id),
+                    "name": inv.name,
+                    "description": inv.description,
+                    "item_count": inv.item_count,
+                }
+                for inv in inventories
+            ],
+        })
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "Invalid JSON."},
+            status=400,
+        )
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {"error": "Expected a JSON object."},
+            status=400,
+        )
+
+    fields = {
+        "name": data.get("name", ""),
+        "description": data.get("description", ""),
+        "inventory_type": data.get("inventory_type", "personal"),
+        "default_currency": data.get("default_currency", "USD"),
+    }
+
+    if not all(isinstance(value, str) for value in fields.values()):
+        return JsonResponse(
+            {"error": "Invalid inventory fields."},
+            status=400,
+        )
+
+    inventory = Inventory(
+        owner=request.user,
+        name=fields["name"],
+        description=fields["description"],
+        inventory_type=fields["inventory_type"],
+        default_currency=fields["default_currency"].upper(),
+    )
+
+    try:
+        with transaction.atomic():
+            inventory.full_clean()
+            inventory.save()
+    except ValidationError as error:
+        return JsonResponse({
+            "success": False,
+            "errors": (
+                error.message_dict
+                if hasattr(error, "message_dict")
+                else {"non_field_errors": error.messages}
+            ),
+        }, status=400)
+    except IntegrityError:
+        return JsonResponse(
+            {"error": "Inventory could not be created."},
+            status=409,
+        )
+
+    request.session[ACTIVE_INVENTORY_KEY] = str(
+        inventory.public_id
+    )
+
+    return JsonResponse({
+        "success": True,
+        "inventory": {
+            "public_id": str(inventory.public_id),
+            "name": inventory.name,
+        },
+        "active_inventory_id": str(inventory.public_id),
+    }, status=201)
+
+
+@require_POST
+def select_inventory_api(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "Invalid JSON."},
+            status=400,
+        )
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {"error": "Expected a JSON object."},
+            status=400,
+        )
+
+    raw_id = data.get("inventory_id")
+
+    try:
+        inventory_id = UUID(raw_id) if isinstance(raw_id, str) else None
+    except ValueError:
+        inventory_id = None
+
+    if inventory_id is None:
+        return JsonResponse(
+            {"error": "Invalid inventory ID."},
+            status=400,
+        )
+
+    inventory = Inventory.objects.filter(
+        public_id=inventory_id,
+        owner=request.user,
+        archived_at__isnull=True,
+    ).first()
+
+    if inventory is None:
+        return JsonResponse(
+            {"error": "Inventory not found."},
+            status=404,
+        )
+
+    request.session[ACTIVE_INVENTORY_KEY] = str(
+        inventory.public_id
+    )
+
+    return JsonResponse({
+        "success": True,
+        "active_inventory_id": str(inventory.public_id),
+    })
 
 def dashboard_summary(request):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     user = request.user
-    user_inventory = Inventory.objects.filter(
-        owner=user,
-        archived_at__isnull=True,
-    ).first()
+    user_inventory = _active_inventory(request)
     inventory_id = str(user_inventory.public_id) if user_inventory else None
 
     items = (
         Item.objects
         .select_related("category")
         .filter(
-            inventory__owner=request.user,
+            inventory=user_inventory,
             archived_at__isnull=True,
         )
         .order_by("-updated_at")
@@ -151,7 +436,12 @@ def dashboard_summary(request):
 
 def item_list(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required."}, status=401)
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401
+        )
+
+    active_inventory = _active_inventory(request)
 
     items = (
         Item.objects
@@ -161,7 +451,7 @@ def item_list(request):
             "location",
         )
         .filter(
-            inventory__owner=request.user,
+            inventory=active_inventory,
             archived_at__isnull=True,
         )
         .order_by("-updated_at")
@@ -263,12 +553,17 @@ def add_item_api(request, inventory_id):
                     'errors': errors,
                 }, status=400)
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET", "POST"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
@@ -340,12 +635,17 @@ def edit_item_api(request, item_id):
                     'errors': errors,
                 }, status=400)
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET"])
 def inventory_detail_api(request, inventory_id):
     """API endpoint for getting all items in an inventory"""
@@ -387,12 +687,17 @@ def inventory_detail_api(request, inventory_id):
             'items': items_data,
         })
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e),
         }, status=500)
- 
+
 @require_http_methods(["GET"])
 def item_detail_api(request, item_id):
     """API endpoint for getting a single item's details"""
@@ -408,7 +713,7 @@ def item_detail_api(request, item_id):
                 {'success': False, 'error': 'You don\'t have access to this item.'},
                 status=403
             )
-        
+
         return JsonResponse({
             'success': True,
             'item': {
@@ -434,9 +739,429 @@ def item_detail_api(request, item_id):
                 'name': item.inventory.name,
             },
         })
-    
+
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e),
         }, status=500)
+
+@require_POST
+def item_valuation_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    query = " ".join(
+        part.strip()
+        for part in [item.name, item.brand, item.model_number]
+        if part and part.strip()
+    )
+    condition = (
+        "new"
+        if item.condition == "new"
+        else "used"
+    )
+    try: 
+        rows = search_ebay(query)
+        result = estimate(rows, query, want_condition=condition)
+    except (requests.exceptions.RequestException, RuntimeError):
+        return JsonResponse({"error": "Unable to retrieve eBay listings"}, status=502,)
+    
+    valuation_run = None
+
+    if result["estimate"] is not None:
+        valuation_run = ValuationRun.objects.create(
+            item=item,
+            requested_by=request.user,
+            valuation_type="automated",
+            status="success",
+            estimated_amount=Decimal(str(result["estimate"])),
+            currency="USD",
+            range_low=(
+                Decimal(str(result["low"]))
+                if result.get("low") is not None
+                else None
+            ),
+            range_high=(
+                Decimal(str(result["high"]))
+                if result.get("high") is not None
+                else None
+            ),
+            sample_count=result["n"],
+            algorithm_version="poc_v1",
+            input_snapshot={
+                "query": query,
+                "condition": condition,
+                "source": "ebay",
+                "confidence": result["confidence"],
+            },
+            started_at=timezone.now(),
+            completed_at=timezone.now(),
+        )
+
+    return JsonResponse({
+        "item_id": str(item.public_id),
+        "item_name": item.name,
+        "query": query,
+        "estimate": result["estimate"],
+        "range_low": result.get("low"),
+        "range_high": result.get("high"),
+        "sample_count": result["n"],
+        "confidence": result["confidence"],
+        "source": "ebay",
+        "currency": "USD",
+        "valuation_run_id": (
+            str(valuation_run.public_id)
+            if valuation_run is not None
+            else None
+        ),
+    })
+
+
+@require_POST
+def accept_valuation_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    try:
+        data = json.loads(request.body)
+        run_id = data.get("valuation_run_id")
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+        return JsonResponse(
+            {"error": "Invalid JSON request."},
+            status=400,
+        )
+
+    if not run_id:
+        return JsonResponse(
+            {"error": "valuation_run_id is required."},
+            status=400,
+        )
+
+    item = get_object_or_404(
+        Item,
+        public_id=item_id,
+        inventory__owner=request.user,
+        archived_at__isnull=True,
+    )
+
+    valuation_run = get_object_or_404(
+        ValuationRun,
+        public_id=run_id,
+        item=item,
+        status="success",
+    )
+
+    if valuation_run.estimated_amount is None:
+        return JsonResponse(
+            {"error": "This valuation has no estimate."},
+            status=400,
+        )
+
+    item.current_estimated_amount = valuation_run.estimated_amount
+    item.valuation_date = timezone.now()
+    item.save(
+        update_fields=[
+            "current_estimated_amount",
+            "valuation_date",
+            "updated_at",
+        ]
+    )
+
+    return JsonResponse({
+        "success": True,
+        "item_id": str(item.public_id),
+        "estimated_value": float(item.current_estimated_amount),
+        "valuation_run_id": str(valuation_run.public_id),
+        "valuation_date": item.valuation_date.isoformat(),
+    })
+
+
+def category_payload(category):
+    items = list(
+        category.items.filter(archived_at__isnull=True).order_by("-updated_at")
+    )
+
+    total_value = sum(
+        (item.effective_value if item.effective_value is not None else Decimal("0.00"))
+        for item in items
+    )
+
+    latest_item_update = items[0].updated_at if items else None
+
+    updated_at = category.updated_at
+
+    if latest_item_update is not None and latest_item_update > updated_at:
+        updated_at = latest_item_update
+
+    return {
+        "public_id": str(category.public_id),
+        "name": category.name,
+        "description": category.description,
+        "item_count": len(items),
+        "total_value": float(total_value),
+        "updated_at": updated_at.isoformat(),
+    }
+
+
+@require_http_methods(["GET", "POST"])
+def category_list_api(request, inventory_id):
+    """
+    GET:
+        Return all active categories for one inventory.
+
+    POST:
+        Create a new category in that inventory.
+    """
+
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    inventory = get_object_or_404(
+        Inventory,
+        public_id=inventory_id,
+        archived_at__isnull=True,
+    )
+
+    if inventory.owner != request.user:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": ("You can only manage categories " "for your own inventory."),
+            },
+            status=403,
+        )
+
+    if request.method == "GET":
+
+        categories = Category.objects.filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).order_by("name")
+
+        return JsonResponse(
+            {
+                "success": True,
+                "inventory": {
+                    "public_id": str(inventory.public_id),
+                    "name": inventory.name,
+                },
+                "categories": [category_payload(category) for category in categories],
+            }
+        )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Invalid request body.",
+            },
+            status=400,
+        )
+
+    name = str(payload.get("name", "")).strip()
+
+    description = str(payload.get("description", "")).strip()
+
+    if not name:
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": {
+                    "name": "Category name is required.",
+                },
+            },
+            status=400,
+        )
+
+    category = Category(
+        inventory=inventory,
+        name=name,
+        description=description,
+    )
+
+    try:
+        category.full_clean()
+        category.save()
+
+    except ValidationError as error:
+
+        errors = (
+            error.message_dict
+            if hasattr(error, "message_dict")
+            else {"category": error.messages}
+        )
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": errors,
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "category": category_payload(category),
+        },
+        status=201,
+    )
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+def category_detail_api(
+    request,
+    category_id,
+):
+    """
+    GET:
+        Return one category.
+
+    PUT:
+        Update its name / description.
+
+    DELETE:
+        Archive the category and move its
+        active items to Uncategorized.
+    """
+
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    category = get_object_or_404(
+        Category,
+        public_id=category_id,
+        archived_at__isnull=True,
+    )
+
+    if category.inventory.owner != request.user:
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": ("You can only manage categories " "for your own inventory."),
+            },
+            status=403,
+        )
+
+    if request.method == "GET":
+
+        return JsonResponse(
+            {
+                "success": True,
+                "category": category_payload(category),
+            }
+        )
+
+    if request.method == "DELETE":
+
+        affected_items = category.items.filter(archived_at__isnull=True).count()
+
+        category.items.filter(archived_at__isnull=True).update(category=None)
+
+        category.archived_at = timezone.now()
+
+        category.save(
+            update_fields=[
+                "archived_at",
+                "updated_at",
+            ]
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": (f'Category "{category.name}" ' "was deleted."),
+                "items_uncategorized": (affected_items),
+            }
+        )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Invalid request body.",
+            },
+            status=400,
+        )
+
+    name = str(
+        payload.get(
+            "name",
+            category.name,
+        )
+    ).strip()
+
+    description = str(
+        payload.get(
+            "description",
+            category.description,
+        )
+    ).strip()
+
+    if not name:
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": {
+                    "name": ("Category name " "is required."),
+                },
+            },
+            status=400,
+        )
+
+    category.name = name
+    category.description = description
+
+    try:
+        category.full_clean()
+        category.save()
+
+    except ValidationError as error:
+
+        errors = (
+            error.message_dict
+            if hasattr(error, "message_dict")
+            else {"category": error.messages}
+        )
+
+        return JsonResponse(
+            {
+                "success": False,
+                "errors": errors,
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "category": category_payload(category),
+        }
+    )
