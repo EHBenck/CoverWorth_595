@@ -6,7 +6,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -348,6 +348,11 @@ def add_item_api(request, inventory_id):
                     'errors': errors,
                 }, status=400)
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -425,6 +430,11 @@ def edit_item_api(request, item_id):
                     'errors': errors,
                 }, status=400)
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -472,6 +482,11 @@ def inventory_detail_api(request, inventory_id):
             'items': items_data,
         })
     
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -520,6 +535,11 @@ def item_detail_api(request, item_id):
             },
         })
 
+    except Http404:
+        return JsonResponse({
+            'success': False,
+            'error': 'Not found.',
+        }, status=404)
     except Exception as e:
         return JsonResponse({
             'success': False,

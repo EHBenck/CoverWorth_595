@@ -214,7 +214,7 @@ async def edit_item_page(item_id: str):
                     success_label.visible = True
                     
                     # Redirect after 1.5 seconds
-                    ui.timer(1.5, lambda: ui.navigate.to("/"))
+                    ui.timer(1.5, lambda: ui.navigate.to("/"), once=True)
                 else:
                     data = response.json()
                     errors = data.get('errors', {})

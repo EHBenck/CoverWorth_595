@@ -81,7 +81,7 @@ class ItemForm(forms.ModelForm):
 
     def clean_quantity(self):
         quantity = self.cleaned_data.get('quantity')
-        if quantity and quantity < 1:
+        if quantity is not None and quantity < 1:
             raise ValidationError("Quantity must be at least 1.")
         return quantity
 

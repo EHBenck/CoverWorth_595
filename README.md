@@ -63,3 +63,18 @@ After pulling changes, reinstall dependencies if `backend/requirements.txt`
 changed.
 
 Do not commit `backend/.venv/`.
+
+### 5. Running Tests
+
+Backend unit and API workflow tests (each test uses a fresh test database):
+
+	cd backend
+	.\.venv\Scripts\python.exe manage.py test myapp
+
+Frontend <-> backend integration tests. These start their own Django server
+on a temporary, freshly migrated database and drive the NiceGUI pages
+through NiceGUI's simulated user, so no servers need to be running and
+`db.sqlite3` is not touched:
+
+	cd frontend
+	..\backend\.venv\Scripts\python.exe -m pytest
