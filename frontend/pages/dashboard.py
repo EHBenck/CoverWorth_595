@@ -1,4 +1,5 @@
 import os
+from django.template import response
 import requests
 from nicegui import app, ui
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
@@ -72,8 +73,8 @@ def show_login_page(error_message=""):
                     error.text = "Could not connect to the server. Try again."
                     return
 
-                app.storage.user["auth_cookies"] = session.cookies.get_dict()
-                app.storage.user["username"] = response.json()["username"]
+                app.storage.tab["auth_cookies"] = session.cookies.get_dict()
+                app.storage.tab["username"] = response.json()["username"]
                 ui.navigate.to("/")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
@@ -87,8 +88,10 @@ def show_login_page(error_message=""):
                 )
 
 
+
 async def sign_out():
     session = authenticated_session()
+
     try:
         response = session.post(
             f"{BACKEND_URL}/api/auth/logout/",
@@ -97,9 +100,16 @@ async def sign_out():
         )
         response.raise_for_status()
     except requests.RequestException:
-        ui.notify("The server could not confirm sign-out.", type="negative")
-    app.storage.user.clear()
+        ui.notify(
+            "The server could not confirm sign-out.",
+            type="negative",
+        )
+
+    app.storage.tab.pop("auth_cookies", None)
+    app.storage.tab.pop("username", None)
+
     ui.navigate.to("/")
+
 
 # ------------------------------------------------------------------
 # GLOBAL STYLING
@@ -444,17 +454,21 @@ def attention_banner(dashboard_data) -> None:
 # ------------------------------------------------------------------
 # PAGE LAYOUT
 # ------------------------------------------------------------------
-
 @ui.page("/")
 async def dashboard_page():
-    cookies = app.storage.user.get("auth_cookies")
+    await ui.context.client.connected()
+    
+    cookies = app.storage.tab.get("auth_cookies")
+
     if not cookies:
         show_login_page()
         return
 
     api_data = await load_dashboard_data(cookies)
+
     if api_data is None:
-        app.storage.user.clear()
+        app.storage.tab.pop("auth_cookies", None)
+        app.storage.tab.pop("username", None)
         show_login_page("Your session expired. Please sign in again.")
         return
 
@@ -465,9 +479,10 @@ async def dashboard_page():
 
     build_app_shell(
         "Dashboard",
-        username=app.storage.user.get("username", "User"),
+        username=app.storage.tab.get("username", "User"),
         on_sign_out=sign_out,
     )
+
 
     # --------------------------------------------------------------
     # MAIN DASHBOARD CONTENT
@@ -499,7 +514,7 @@ async def dashboard_page():
             ui.button(
                 "Add Item",
                 icon="add",
-                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}")
             ).props(
                 "unelevated color=primary no-caps"
             ).classes(
