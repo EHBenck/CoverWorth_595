@@ -2,9 +2,9 @@
 from pathlib import Path
 from statistics import median
 import pandas as pd
-from schemas import Listing
-from conditions import CONDITION_MAP
-from ebay_client import load
+from .schemas import Listing
+from .conditions import CONDITION_MAP 
+from .ebay_client import load
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "raw"
 GROUND_TRUTH = Path(__file__).parents[1] / "ground_truth" / "ground_truth.csv"

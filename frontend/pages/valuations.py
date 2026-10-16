@@ -1,4 +1,6 @@
-from nicegui import app, ui
+import requests
+from nicegui import app, ui, run
+from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from utilities.mockdata import AI_PREVIEW, VALUATION_ITEMS
@@ -280,17 +282,67 @@ ui.add_css("""
     }
 """, shared=True)
 
+def fetch_inventory_items(cookies):
+    """Load inventory items from Django."""
+
+    if not cookies:
+        raise PermissionError("Please sign in first.")
+
+    session = authenticated_session(cookies)
+
+    response = session.get(
+        f"{BACKEND_URL}/api/items/",
+        timeout=10,
+    )
+
+    if response.status_code in (401, 403):
+        raise PermissionError("Please sign in again.")
+
+    response.raise_for_status()
+
+    return response.json().get("items", [])
+
+def fetch_live_valuation(item_id, cookies):
+    """Request a live valuation from Django."""
+
+    if not cookies:
+        raise PermissionError("Please sign in first.")
+
+    session = authenticated_session(cookies)
+
+    response = session.post(
+        f"{BACKEND_URL}/api/item/{item_id}/valuation/",
+        headers=csrf_headers(session),
+        timeout=45,
+    )
+
+    if response.status_code in (401, 403):
+        raise PermissionError("Your session expired or access was denied.")
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def accept_live_valuation(item_id, valuation_run_id, cookies):
+    session = authenticated_session(cookies)
+
+    response = session.post(
+        f"http://127.0.0.1:8000/api/item/{item_id}/valuation/accept/",
+        json={"valuation_run_id": valuation_run_id},
+        headers=csrf_headers(session),
+        timeout=30,
+    )
+
+    response.raise_for_status()
+    return response.json()
 
 # ============================================================
 # VALUATIONS PAGE
 # ============================================================
 
 @ui.page("/valuations")
-def valuations_page():
-
-    if not app.storage.user.get("auth_cookies"):
-        ui.navigate.to("/")
-        return
+async def valuations_page():
 
     ui.page_title(
         "Valuations | CoverWorth"
@@ -299,6 +351,148 @@ def valuations_page():
 
     build_app_shell("Valuations")
 
+    cookies = app.storage.user.get("auth_cookies")
+
+    try:
+        inventory_items = await run.io_bound(
+            fetch_inventory_items,
+            cookies,
+        )
+
+    except (requests.RequestException, PermissionError) as error:
+        ui.notify(f"Could not load inventory: {error}", type="negative")
+        inventory_items = []
+
+    print("Inventory items from Django:", inventory_items)
+    
+    live_valuation = {"result": None}
+
+    async def update_valuation(item):
+        item_id = item.get("public_id")
+
+        if not item_id:
+            ui.notify(
+                "This item is mock data and has no Django item ID.",
+                type="warning",
+            )
+            return
+
+        ui.notify(f'Fetching live valuation for {item["name"]}...')
+
+        try:
+            cookies = app.storage.user.get("auth_cookies")
+
+            result = await run.io_bound(
+                fetch_live_valuation,
+                item_id,
+                cookies,
+            )
+
+        except PermissionError as error:
+            ui.notify(str(error), type="negative")
+            return
+
+        except requests.RequestException as error:
+            ui.notify(f"Valuation request failed: {error}", type="negative")
+            return
+
+        if result.get("estimate") is not None:
+            ui.notify(
+                f'Live estimate: ${result["estimate"]:,.2f}',
+                type="positive",
+            )
+        else:
+            ui.notify(
+                "Not enough comparable listings to calculate a valuation.",
+                type="warning",
+            )
+
+        print("Live valuation result:", result)
+        live_valuation["result"] = result
+        valuation_preview.refresh()
+  
+        if result.get("estimate") is not None:
+            item["current_value"] = float(result["estimate"])
+            item["estimated_value"] = float(result["estimate"])
+            item["status"] = "Current"
+            item["days_old"] = 0
+            item["last_updated"] = "Just now"
+
+            valuation_table.refresh()
+
+        
+    async def accept_valuation():
+        result = live_valuation["result"]
+
+        if not result or not result.get("valuation_run_id"):
+            ui.notify(
+                "Please update an item's valuation first.",
+                type="warning",
+            )
+            return
+
+        item_id = result["item_id"]
+        valuation_run_id = result["valuation_run_id"]
+
+        try:
+            cookies = app.storage.user.get("auth_cookies")
+
+            saved = await run.io_bound(
+                accept_live_valuation,
+                item_id,
+                valuation_run_id,
+                cookies,
+            )
+
+        except (requests.RequestException, PermissionError) as error:
+            ui.notify(
+                f"Could not save valuation: {error}",
+                type="negative",
+            )
+            return
+
+        if saved.get("success"):
+            for item in inventory_items:
+                if item["public_id"] == item_id:
+                    item["estimated_value"] = saved["estimated_value"]
+                    item["current_value"] = saved["estimated_value"]
+                    item["status"] = "Current"
+                    item["days_old"] = 0
+                    item["last_updated"] = "Just now"
+                    break
+
+            valuation_table.refresh()
+
+            ui.notify(
+                f'Valuation saved: ${saved["estimated_value"]:,.2f}',
+                type="positive",
+            )
+
+
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc)
+
+    for item in inventory_items:
+        item["icon"] = "inventory_2"
+        item["category"] = item.get("category") or "Uncategorized"
+        item["location"] = item.get("location") or "Unspecified"
+
+        item["current_value"] = float(item.get("estimated_value") or 0)
+
+        updated_at = item.get("updated_at")
+        if updated_at:
+            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            item["days_old"] = (today - updated).days
+            item["last_updated"] = f'{item["days_old"]} days ago'
+        else:
+            item["days_old"] = 999
+            item["last_updated"] = "Never"
+
+        item["status"] = (
+            "Current" if item.get("estimated_value") is not None
+            else "Needs Review"
+        )
 
     # ========================================================
     # PAGE CONTENT
@@ -306,8 +500,7 @@ def valuations_page():
 
     with ui.column().classes(
         "valuations-container page-content-frame p-7 gap-5"
-    ):
-
+    ): 
 
         # ----------------------------------------------------
         # PAGE HEADER
@@ -473,7 +666,7 @@ def valuations_page():
 
                 filtered_items = []
 
-                for item in VALUATION_ITEMS:
+                for item in inventory_items:
 
                     # -----------------------------------------
                     # SEARCH FILTER
@@ -557,7 +750,11 @@ def valuations_page():
                             )
                             ui.label(item["category"]).classes("text-xs muted")
 
-                    ui.label(f'${item["current_value"]:,.0f}').classes(
+                    ui.label(
+                        f'${item["current_value"]:,.0f}'
+                        if item.get("estimated_value") is not None
+                        else "Not valued"
+                    ).classes(
                         "valuation-current-value-cell text-sm font-semibold"
                     )
                     ui.label(item["last_updated"]).classes(
@@ -572,9 +769,7 @@ def valuations_page():
                     with ui.row().classes("items-center gap-1"):
                         ui.button(
                             "Update",
-                            on_click=lambda item=item: ui.notify(
-                                f'Updating {item["name"]}'
-                            ),
+                             on_click=lambda item=item: update_valuation(item),
                         ).props("outline color=primary dense no-caps")
 
                         with ui.button(icon="more_vert").props(
@@ -644,267 +839,281 @@ def valuations_page():
         # AI VALUATION PREVIEW
         # ====================================================
 
-        with ui.card().classes(
-            "ai-preview-card "
-            "w-full p-5 gap-4"
-        ):
+        @ui.refreshable
+        def valuation_preview():
+            result = live_valuation["result"]
 
+            preview = {
+                "name": result["item_name"] if result else "Select an item to value",
+                "estimate": result.get("estimate") if result else None,
+                "range_low": result.get("range_low") if result else None,
+                "range_high": result.get("range_high") if result else None,
+                "confidence": result.get("confidence", "insufficient") if result else "N/A",
+                "sample_count": result.get("sample_count", 0) if result else 0,
+            }
 
-            # ------------------------------------------------
-            # PREVIEW HEADER
-            # ------------------------------------------------
-
-            with ui.column().classes(
-                "gap-0"
-            ):
-
-                ui.label(
-                    "AI Valuation Preview"
-                ).classes(
-                    "text-2xl font-bold"
-                )
-
-                ui.label(
-                    "Review AI-powered estimates before "
-                    "updating your item values."
-                ).classes(
-                    "text-sm muted"
-                )
-
-
-            # ------------------------------------------------
-            # PREVIEW CONTENT
-            # ------------------------------------------------
-
-            with ui.row().classes(
-                "preview-content "
-                "w-full "
-                "items-stretch "
-                "gap-6 "
-                "flex-nowrap"
+            with ui.card().classes(
+                "ai-preview-card "
+                "w-full p-5 gap-4"
             ):
 
 
-                # =============================================
-                # ITEM / ESTIMATE
-                # =============================================
-
-                with ui.row().classes(
-                    "preview-section "
-                    "items-center "
-                    "gap-5 "
-                    "flex-1"
-                ):
-
-
-                    with ui.element(
-                        "div"
-                    ).classes(
-                        "preview-image"
-                    ):
-
-                        ui.icon(
-                            "photo_camera"
-                        ).classes(
-                            "text-6xl "
-                            "text-slate-600"
-                        )
-
-
-                    with ui.column().classes(
-                        "gap-1"
-                    ):
-
-                        ui.label(
-                            AI_PREVIEW["name"]
-                        ).classes(
-                            "text-lg font-bold"
-                        )
-
-                        ui.label(
-                            "Current estimate"
-                        ).classes(
-                            "text-sm muted"
-                        )
-
-                        ui.label(
-                            f'${AI_PREVIEW["current_estimate"]:,.0f}'
-                        ).classes(
-                            "text-3xl font-bold"
-                        )
-
-                        ui.label(
-                            "Estimated market range"
-                        ).classes(
-                            "text-sm muted mt-2"
-                        )
-
-                        ui.label(
-                            f'${AI_PREVIEW["range_low"]:,.0f}'
-                            " – "
-                            f'${AI_PREVIEW["range_high"]:,.0f}'
-                        ).classes(
-                            "text-lg "
-                            "font-bold "
-                            "text-blue-900"
-                        )
-
-
-                # Divider
-                ui.element(
-                    "div"
-                ).classes(
-                    "preview-divider"
-                )
-
-
-                # =============================================
-                # MARKET SOURCES
-                # =============================================
+                # ------------------------------------------------
+                # PREVIEW HEADER
+                # ------------------------------------------------
 
                 with ui.column().classes(
-                    "preview-section "
-                    "gap-2 "
-                    "flex-1"
+                    "gap-0"
                 ):
 
                     ui.label(
-                        "Market sources"
+                        "AI Valuation Preview"
                     ).classes(
-                        "text-sm muted mb-1"
+                        "text-2xl font-bold"
                     )
 
-
-                    for source in AI_PREVIEW["sources"]:
-
-                        with ui.row().classes(
-                            "w-full "
-                            "items-center "
-                            "justify-between"
-                        ):
-
-                            ui.label(
-                                source["name"]
-                            ).classes(
-                                "text-sm "
-                                "text-slate-700"
-                            )
-
-                            ui.label(
-                                f'${source["value"]:,.0f}'
-                            ).classes(
-                                "text-sm "
-                                "font-semibold"
-                            )
-
-
-                # Divider
-                ui.element(
-                    "div"
-                ).classes(
-                    "preview-divider"
-                )
-
-
-                # =============================================
-                # CONFIDENCE / ACCEPT
-                # =============================================
-
-                with ui.column().classes(
-                    "preview-section "
-                    "gap-3 "
-                    "flex-[1.1]"
-                ):
-
                     ui.label(
-                        "Confidence"
+                        "Review AI-powered estimates before "
+                        "updating your item values."
                     ).classes(
                         "text-sm muted"
                     )
 
 
+                # ------------------------------------------------
+                # PREVIEW CONTENT
+                # ------------------------------------------------
+
+                with ui.row().classes(
+                    "preview-content "
+                    "w-full "
+                    "items-stretch "
+                    "gap-6 "
+                    "flex-nowrap"
+                ):
+
+
+                    # =============================================
+                    # ITEM / ESTIMATE
+                    # =============================================
+
                     with ui.row().classes(
-                        "w-full "
+                        "preview-section "
                         "items-center "
-                        "gap-3"
+                        "gap-5 "
+                        "flex-1"
                     ):
+
 
                         with ui.element(
                             "div"
                         ).classes(
-                            "confidence-bar flex-1"
+                            "preview-image"
                         ):
 
-                            ui.element(
-                                "div"
+                            ui.icon(
+                                "photo_camera"
                             ).classes(
-                                "confidence-fill"
+                                "text-6xl "
+                                "text-slate-600"
                             )
 
-                        ui.label(
-                            AI_PREVIEW["confidence"]
-                        ).classes(
-                            "text-sm "
-                            "font-semibold "
-                            "text-green-700"
-                        )
+
+                        with ui.column().classes(
+                            "gap-1"
+                        ):
+
+                            ui.label(
+                                preview["name"]
+                            ).classes(
+                                "text-lg font-bold"
+                            )
+
+                            ui.label(
+                                "Current estimate"
+                            ).classes(
+                                "text-sm muted"
+                            )
+
+                            ui.label(
+                                f'${preview["estimate"]:,.2f}'
+                                if preview["estimate"] is not None
+                                else "Not yet valued"
+                            ).classes(
+                                "text-3xl font-bold"
+                            )
+
+                            ui.label(
+                                "Estimated market range"
+                            ).classes(
+                                "text-sm muted mt-2"
+                            )
+
+                            ui.label(
+                                f'${preview["range_low"]:,.2f} – ${preview["range_high"]:,.2f}'
+                                if preview["range_low"] is not None
+                                and preview["range_high"] is not None
+                                else "No range available"
+                            ).classes(
+                                "text-lg "
+                                "font-bold "
+                                "text-blue-900"
+                            )
 
 
-                    # AI explanation
-                    with ui.row().classes(
-                        "ai-callout "
-                        "w-full "
-                        "items-center "
-                        "gap-3"
+                    # Divider
+                    ui.element(
+                        "div"
+                    ).classes(
+                        "preview-divider"
+                    )
+
+
+                    # =============================================
+                    # MARKET SOURCES
+                    # =============================================
+
+                    with ui.column().classes(
+                        "preview-section "
+                        "gap-2 "
+                        "flex-1"
                     ):
 
-                        ui.icon(
-                            "auto_awesome"
-                        ).classes(
-                            "text-2xl"
-                        )
-
                         ui.label(
-                            "AI estimate based on current "
-                            "market data from 4 trusted sources."
+                            "Market sources"
                         ).classes(
-                            "text-sm"
+                            "text-sm muted mb-1"
                         )
 
 
-                    # Buttons
-                    with ui.row().classes(
-                        "w-full "
-                        "justify-end "
+                        
+                        with ui.row().classes(
+                            "w-full "
+                            "items-center "
+                            "justify-between"
+                        ):
+                            ui.label(
+                                "eBay"
+                            ).classes(
+                                "text-sm text-slate-700"
+                            )
+
+                            ui.label(
+                                f'{preview["sample_count"]} comparable listings'
+                            ).classes(
+                                "text-sm font-semibold"
+                            )
+
+
+
+                    # Divider
+                    ui.element(
+                        "div"
+                    ).classes(
+                        "preview-divider"
+                    )
+
+
+                    # =============================================
+                    # CONFIDENCE / ACCEPT
+                    # =============================================
+
+                    with ui.column().classes(
+                        "preview-section "
                         "gap-3 "
-                        "mt-auto"
+                        "flex-[1.1]"
                     ):
 
-                        ui.button(
-                            "Cancel",
-                            on_click=lambda:
-                            ui.notify(
-                                "Valuation preview cancelled."
-                            ),
-                        ).props(
-                            "outline "
-                            "color=grey-7 "
-                            "no-caps"
+                        ui.label(
+                            "Confidence"
                         ).classes(
-                            "px-5"
+                            "text-sm muted"
                         )
 
-                        ui.button(
-                            f'Accept '
-                            f'${AI_PREVIEW["current_estimate"]:,.0f}',
-                            on_click=lambda:
-                            ui.notify(
-                                "Valuation accepted."
-                            ),
-                        ).props(
-                            "unelevated "
-                            "color=primary "
-                            "no-caps"
-                        ).classes(
-                            "px-5"
-                        )
+
+                        with ui.row().classes(
+                            "w-full "
+                            "items-center "
+                            "gap-3"
+                        ):
+
+                            with ui.element(
+                                "div"
+                            ).classes(
+                                "confidence-bar flex-1"
+                            ):
+
+                                ui.element(
+                                    "div"
+                                ).classes(
+                                    "confidence-fill"
+                                )
+
+                            ui.label(
+                                preview["confidence"].title()
+                            ).classes(
+                                "text-sm "
+                                "font-semibold "
+                                "text-green-700"
+                            )
+
+                        # AI explanation
+                        with ui.row().classes(
+                            "ai-callout "
+                            "w-full "
+                            "items-center "
+                            "gap-3"
+                        ):
+
+                            ui.icon(
+                                "auto_awesome"
+                            ).classes(
+                                "text-2xl"
+                            )
+
+                            ui.label(
+                                f'Estimate based on {preview["sample_count"]} '
+                                "comparable eBay listings."
+                            ).classes(
+                                "text-sm"
+                            )
+
+
+                        # Buttons
+                        with ui.row().classes(
+                            "w-full "
+                            "justify-end "
+                            "gap-3 "
+                            "mt-auto"
+                        ):
+
+                            ui.button(
+                                "Cancel",
+                                on_click=lambda:
+                                ui.notify(
+                                    "Valuation preview cancelled."
+                                ),
+                            ).props(
+                                "outline "
+                                "color=grey-7 "
+                                "no-caps"
+                            ).classes(
+                                "px-5"
+                            )
+
+                            
+                            ui.button(
+                                f'Accept ${preview["estimate"]:,.2f}'
+                                if preview["estimate"] is not None
+                                else "No valuation available",
+
+                                on_click=accept_valuation,
+                            ).props(
+                                "unelevated "
+                                "color=primary "
+                                "no-caps"
+                            ).classes(
+                                "px-5"
+                            )
+
+        valuation_preview()
