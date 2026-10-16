@@ -16,7 +16,7 @@ def authenticated_session(cookies=None) -> requests.Session:
     stored_cookies = (
         cookies
         if cookies is not None
-        else app.storage.tab.get("auth_cookies", {})
+        else app.storage.user.get("auth_cookies", {})
     )
 
     for name, value in stored_cookies.items():

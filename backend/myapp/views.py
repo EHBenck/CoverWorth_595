@@ -13,7 +13,9 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 from myapp.forms import ItemForm
 from myapp.models import Category, Inventory, Item
-
+from uuid import UUID
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 
 @ensure_csrf_cookie
 def auth_csrf(request):
@@ -133,23 +135,218 @@ def auth_logout(request):
     logout(request)
     return JsonResponse({"authenticated": False})
 
+ACTIVE_INVENTORY_KEY = "active_inventory_id"
+
+
+def _active_inventory(request):
+    inventories = Inventory.objects.filter(
+        owner=request.user,
+        archived_at__isnull=True,
+    ).order_by("created_at", "pk")
+
+    saved_id = request.session.get(ACTIVE_INVENTORY_KEY)
+    inventory = None
+
+    if saved_id:
+        try:
+            inventory = inventories.filter(
+                public_id=UUID(str(saved_id))
+            ).first()
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+    if inventory is None:
+        inventory = inventories.first()
+
+        if inventory:
+            request.session[ACTIVE_INVENTORY_KEY] = str(
+                inventory.public_id
+            )
+        else:
+            request.session.pop(ACTIVE_INVENTORY_KEY, None)
+
+    return inventory
+
+
+@require_http_methods(["GET", "POST"])
+def inventories_api(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    if request.method == "GET":
+        active = _active_inventory(request)
+
+        inventories = (
+            Inventory.objects
+            .filter(
+                owner=request.user,
+                archived_at__isnull=True,
+            )
+            .annotate(
+                item_count=Count(
+                    "items",
+                    filter=Q(items__archived_at__isnull=True),
+                )
+            )
+            .order_by("created_at", "pk")
+        )
+
+        return JsonResponse({
+            "success": True,
+            "active_inventory_id": (
+                str(active.public_id) if active else None
+            ),
+            "inventories": [
+                {
+                    "public_id": str(inv.public_id),
+                    "name": inv.name,
+                    "description": inv.description,
+                    "item_count": inv.item_count,
+                }
+                for inv in inventories
+            ],
+        })
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "Invalid JSON."},
+            status=400,
+        )
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {"error": "Expected a JSON object."},
+            status=400,
+        )
+
+    fields = {
+        "name": data.get("name", ""),
+        "description": data.get("description", ""),
+        "inventory_type": data.get("inventory_type", "personal"),
+        "default_currency": data.get("default_currency", "USD"),
+    }
+
+    if not all(isinstance(value, str) for value in fields.values()):
+        return JsonResponse(
+            {"error": "Invalid inventory fields."},
+            status=400,
+        )
+
+    inventory = Inventory(
+        owner=request.user,
+        name=fields["name"],
+        description=fields["description"],
+        inventory_type=fields["inventory_type"],
+        default_currency=fields["default_currency"].upper(),
+    )
+
+    try:
+        with transaction.atomic():
+            inventory.full_clean()
+            inventory.save()
+    except ValidationError as error:
+        return JsonResponse({
+            "success": False,
+            "errors": (
+                error.message_dict
+                if hasattr(error, "message_dict")
+                else {"non_field_errors": error.messages}
+            ),
+        }, status=400)
+    except IntegrityError:
+        return JsonResponse(
+            {"error": "Inventory could not be created."},
+            status=409,
+        )
+
+    request.session[ACTIVE_INVENTORY_KEY] = str(
+        inventory.public_id
+    )
+
+    return JsonResponse({
+        "success": True,
+        "inventory": {
+            "public_id": str(inventory.public_id),
+            "name": inventory.name,
+        },
+        "active_inventory_id": str(inventory.public_id),
+    }, status=201)
+
+
+@require_POST
+def select_inventory_api(request):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "Invalid JSON."},
+            status=400,
+        )
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {"error": "Expected a JSON object."},
+            status=400,
+        )
+
+    raw_id = data.get("inventory_id")
+
+    try:
+        inventory_id = UUID(raw_id) if isinstance(raw_id, str) else None
+    except ValueError:
+        inventory_id = None
+
+    if inventory_id is None:
+        return JsonResponse(
+            {"error": "Invalid inventory ID."},
+            status=400,
+        )
+
+    inventory = Inventory.objects.filter(
+        public_id=inventory_id,
+        owner=request.user,
+        archived_at__isnull=True,
+    ).first()
+
+    if inventory is None:
+        return JsonResponse(
+            {"error": "Inventory not found."},
+            status=404,
+        )
+
+    request.session[ACTIVE_INVENTORY_KEY] = str(
+        inventory.public_id
+    )
+
+    return JsonResponse({
+        "success": True,
+        "active_inventory_id": str(inventory.public_id),
+    })
 
 def dashboard_summary(request):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     user = request.user
-    user_inventory = Inventory.objects.filter(
-        owner=user,
-        archived_at__isnull=True,
-    ).first()
+    user_inventory = _active_inventory(request)
     inventory_id = str(user_inventory.public_id) if user_inventory else None
 
     items = (
         Item.objects
         .select_related("category")
         .filter(
-            inventory__owner=request.user,
+            inventory=user_inventory,
             archived_at__isnull=True,
         )
         .order_by("-updated_at")
@@ -235,7 +432,12 @@ def dashboard_summary(request):
 
 def item_list(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required."}, status=401)
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401
+        )
+
+    active_inventory = _active_inventory(request)
 
     items = (
         Item.objects
@@ -245,7 +447,7 @@ def item_list(request):
             "location",
         )
         .filter(
-            inventory__owner=request.user,
+            inventory=active_inventory,
             archived_at__isnull=True,
         )
         .order_by("-updated_at")

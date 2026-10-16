@@ -176,7 +176,7 @@ async def add_item_page(
     inventory_id: str,
 ):
     await ui.context.client.connected()
-    if not app.storage.tab.get("auth_cookies"):
+    if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
         return
 
