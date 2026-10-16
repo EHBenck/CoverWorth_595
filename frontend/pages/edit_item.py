@@ -543,6 +543,36 @@ async def edit_item_page(item_id: str):
                         "Item updated successfully.",
                     )
                     success_label.visible = True
+                    
+                    # Redirect after 1.5 seconds
+                    ui.timer(1.5, lambda: ui.navigate.to("/"), once=True)
+                else:
+                    data = response.json()
+                    errors = data.get('errors', {})
+                    
+                    # Display field errors
+                    if 'name' in errors:
+                        name_error.set_text(errors['name'])
+                        name_error.visible = True
+                    if 'category' in errors:
+                        category_error.set_text(errors['category'])
+                        category_error.visible = True
+                    if 'purchase_date' in errors:
+                        date_error.set_text(errors['purchase_date'])
+                        date_error.visible = True
+                    if 'purchase_amount' in errors:
+                        amount_error.set_text(errors['purchase_amount'])
+                        amount_error.visible = True
+                    
+                    # Display general error
+                    error_msg = data.get('error', 'Failed to update item. Please check the errors below.')
+                    if errors and not error_msg.startswith('Failed'):
+                        error_msg = "Please correct the errors below."
+                    error_label.set_text(error_msg)
+                    error_label.visible = True
+            
+            except requests.RequestException as e:
+                error_label.set_text(f"Connection error: {str(e)}")
                     ui.notify("Item updated successfully.", type="positive")
 
                     ui.timer(

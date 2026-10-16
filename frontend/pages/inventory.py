@@ -1,3 +1,4 @@
+from nicegui import app, ui
 import requests
 from nicegui import ui
 from utilities.nav_wrapper import build_app_shell
@@ -278,6 +279,10 @@ def fetch_inventory_categories(inventory_id: str) -> list[dict]:
 @ui.page("/inventory")
 async def inventory_page():
     await ui.context.client.connected()
+
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
 
     ui.page_title(
         "Inventory | CoverWorth"
