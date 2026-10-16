@@ -117,7 +117,7 @@ async def load_item_data(item_id: str) -> dict:
 async def edit_item_page(item_id: str):
     await ui.context.client.connected()
 
-    if not app.storage.tab.get("auth_cookies"):
+    if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
         return
 
@@ -125,7 +125,7 @@ async def edit_item_page(item_id: str):
 
     build_app_shell(
         "Inventory",
-        username=app.storage.tab.get("username", "User"),
+        username=app.storage.user.get("username", "User"),
     )
 
     data = await load_item_data(item_id)

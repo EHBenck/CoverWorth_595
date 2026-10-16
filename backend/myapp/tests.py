@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-
+from myapp.test_integration import FrontendClient, PASSWORD
 from myapp.models import Category, Inventory, Item
 
 
@@ -372,3 +372,69 @@ class RegistrationAPITestCase(TestCase):
         response = self.client.get("/api/auth/register/")
 
         self.assertEqual(response.status_code, 405)
+
+class InventorySwitchingTestCase(TestCase):
+
+    def setUp(self):
+        self.frontend = FrontendClient()
+        self.frontend.register("switchuser")
+
+        self.user = User.objects.get(username="switchuser")
+        self.home = Inventory.objects.get(owner=self.user)
+        self.office = Inventory.objects.create(
+            owner=self.user,
+            name="Office",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="otheruser",
+            password=PASSWORD,
+        )
+        self.other_inventory = Inventory.objects.create(
+            owner=self.other_user,
+            name="Private",
+        )
+
+        Item.objects.create(
+            inventory=self.home,
+            name="Home Item",
+            manual_value=Decimal("100.00"),
+        )
+        Item.objects.create(
+            inventory=self.office,
+            name="Office Item",
+            manual_value=Decimal("900.00"),
+        )
+
+    def test_inventory_switching(self):
+        response = self.frontend.post_json(
+            "/api/inventories/select/",
+            {"inventory_id": str(self.office.public_id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        dashboard = self.frontend.get("/api/dashboard/").json()
+
+        self.assertEqual(
+            dashboard["inventory_id"],
+            str(self.office.public_id),
+        )
+        self.assertEqual(
+            dashboard["summary"]["estimated_value"],
+            900.0,
+        )
+
+        items = self.frontend.get("/api/items/").json()["items"]
+        self.assertEqual(
+            [item["name"] for item in items],
+            ["Office Item"],
+        )
+
+    def test_cannot_select_another_users_inventory(self):
+        response = self.frontend.post_json(
+            "/api/inventories/select/",
+            {"inventory_id": str(self.other_inventory.public_id)},
+        )
+
+        self.assertEqual(response.status_code, 404)

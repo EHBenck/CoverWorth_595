@@ -2,6 +2,8 @@ from collections.abc import Callable
 
 from nicegui import ui
 
+from utilities.inventory_switcher import show_inventory_switcher
+
 #TODO : Replace user related things with dynamic username from backend
 
 ui.add_css("""
@@ -114,6 +116,7 @@ def build_app_shell(
 
     with ui.header().classes("top-header h-[68px] items-center px-5"):
         ui.button(icon="menu", on_click=drawer.toggle).props("flat round color=grey-8")
+        show_inventory_switcher(active_page)
         ui.space()
         ui.input(
             placeholder="Search items, categories, or locations..."

@@ -73,8 +73,8 @@ def show_login_page(error_message=""):
                     error.text = "Could not connect to the server. Try again."
                     return
 
-                app.storage.tab["auth_cookies"] = session.cookies.get_dict()
-                app.storage.tab["username"] = response.json()["username"]
+                app.storage.user["auth_cookies"] = session.cookies.get_dict()
+                app.storage.user["username"] = response.json()["username"]
                 ui.navigate.to("/")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
@@ -105,8 +105,8 @@ async def sign_out():
             type="negative",
         )
 
-    app.storage.tab.pop("auth_cookies", None)
-    app.storage.tab.pop("username", None)
+    app.storage.user.pop("auth_cookies", None)
+    app.storage.user.pop("username", None)
 
     ui.navigate.to("/")
 
@@ -458,7 +458,7 @@ def attention_banner(dashboard_data) -> None:
 async def dashboard_page():
     await ui.context.client.connected()
     
-    cookies = app.storage.tab.get("auth_cookies")
+    cookies = app.storage.user.get("auth_cookies")
 
     if not cookies:
         show_login_page()
@@ -467,8 +467,8 @@ async def dashboard_page():
     api_data = await load_dashboard_data(cookies)
 
     if api_data is None:
-        app.storage.tab.pop("auth_cookies", None)
-        app.storage.tab.pop("username", None)
+        app.storage.user.pop("auth_cookies", None)
+        app.storage.user.pop("username", None)
         show_login_page("Your session expired. Please sign in again.")
         return
 
@@ -479,7 +479,7 @@ async def dashboard_page():
 
     build_app_shell(
         "Dashboard",
-        username=app.storage.tab.get("username", "User"),
+        username=app.storage.user.get("username", "User"),
         on_sign_out=sign_out,
     )
 
