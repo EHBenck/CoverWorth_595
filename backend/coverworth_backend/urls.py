@@ -80,5 +80,6 @@ urlpatterns = [
     path("api/inventory/<uuid:inventory_id>/categories/", views.category_list_api, name="category-list-api"),
     path("api/category/<uuid:category_id>/", views.category_detail_api, name="category-detail-api"),
     path("api/item/<uuid:item_id>/valuation/", views.item_valuation_api, name="item-valuation-api"),
-    path("api/item/<uuid:item_id>/valuation/", views.item_valuation_api, name="item-valuation-api"),
+    path("api/item/<uuid:item_id>/valuation/accept/", views.accept_valuation_api, name="accept_valuation_api",
+),
 ]
