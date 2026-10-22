@@ -564,7 +564,7 @@ def add_item_api(request, inventory_id):
             'error': str(e),
         }, status=500)
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "POST", "DELETE"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
     if not request.user.is_authenticated:
@@ -634,6 +634,14 @@ def edit_item_api(request, item_id):
                     'success': False,
                     'errors': errors,
                 }, status=400)
+
+        if request.method == 'DELETE':
+            item.archived_at = timezone.now()
+            item.save(update_fields=['archived_at', 'updated_at'])
+            return JsonResponse({
+                'success': True,
+                'message': f"Item '{item.name}' was deleted successfully.",
+            })
     
     except Http404:
         return JsonResponse({

@@ -6,6 +6,7 @@ from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from backend_client import (
     BACKEND_URL,
     authenticated_session,
+    csrf_headers,
 )
 
 
@@ -309,6 +310,35 @@ async def inventory_page():
         state["categories"] = fetch_inventory_categories(inventory_id)
         inventory_rows.refresh()
 
+    async def confirm_and_delete_item(item_public_id: str, item_name: str):
+        def execute_delete(item_public_id: str, item_name: str):
+                try:
+                    session = authenticated_session()
+                    response = session.delete(
+                        f"{BACKEND_URL}/api/item/{item_public_id}/edit/",
+                        headers=csrf_headers(session),
+                        timeout=10,
+                    )
+                    data = response.json() if response.content else {}
+                    if response.ok and data.get("success", True):
+                        ui.notify(f"Item '{item_name}' deleted successfully.", type="positive")
+                        reload_inventory()
+                    else:
+                        ui.notify(data.get("error", "Failed to delete item."), type="negative")
+                except requests.RequestException as error:
+                    ui.notify(f"Connection error: {error}", type="negative")
+
+        with ui.dialog() as dialog, ui.card().classes("p-6 gap-4 min-w-[320px]"):
+            ui.label("Delete Item").classes("text-lg font-bold")
+            ui.label(f"Are you sure you want to delete '{item_name}'?").classes("text-sm muted")
+            with ui.row().classes("w-full justify-end gap-3 mt-2"):
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button(
+                    "Delete",
+                    on_click=lambda: [dialog.close(), execute_delete(item_public_id, item_name)]
+                ).props("unelevated color=red no-caps")
+        dialog.open()
+
 
     # MAIN PAGE CONTENT
     with ui.column().classes(
@@ -551,15 +581,15 @@ async def inventory_page():
                             )
                             ui.menu_item(
                                 "Edit",
-                                on_click=lambda item=item: ui.notify(
-                                    f'Edit {item["name"]}'
+                                on_click=lambda item=item: ui.navigate.to(
+                                    f'/edit-item/{item["public_id"]}'
                                 ),
                             )
                             ui.separator()
                             ui.menu_item(
                                 "Delete",
-                                on_click=lambda item=item: ui.notify(
-                                    f'Delete {item["name"]}'
+                                on_click=lambda item=item: confirm_and_delete_item(
+                                    item["public_id"], item["name"]
                                 ),
                             )
 

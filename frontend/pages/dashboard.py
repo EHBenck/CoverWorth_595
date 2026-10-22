@@ -75,7 +75,7 @@ def show_login_page(error_message=""):
 
                 app.storage.user["auth_cookies"] = session.cookies.get_dict()
                 app.storage.user["username"] = response.json()["username"]
-                ui.navigate.to("/")
+                ui.navigate.to("/dashboard")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
                 "unelevated color=primary no-caps"
@@ -455,6 +455,13 @@ def attention_banner(dashboard_data) -> None:
 # PAGE LAYOUT
 # ------------------------------------------------------------------
 @ui.page("/")
+async def root_page():
+    await ui.context.client.connected()
+    
+    # Always show the login page first when visiting root
+    show_login_page()
+
+@ui.page("/dashboard")
 async def dashboard_page():
     await ui.context.client.connected()
     
