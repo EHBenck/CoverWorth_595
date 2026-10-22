@@ -1,6 +1,7 @@
 
 from pathlib import Path
 from statistics import median
+from django.db.models import query
 import pandas as pd
 from .schemas import Listing
 from .conditions import CONDITION_MAP 
@@ -24,14 +25,13 @@ def estimate(rows, query, want_condition="used"):
         and "512gb" not in r.title.lower().replace(" ", "")
     ]
     if len(kept) < 3:
-        return {"query": query, "estimate": None, "n": len(kept), "confidence": "insufficient"}
+        return {"query": query, "estimate": None, "n": len(kept), "confidence": "insufficient", "comparables": kept,}
     prices = sorted(float(r.price) for r in kept)
     med = median(prices)
     q1, q3 = pd.Series(prices).quantile([0.25, 0.75])
     spread = (q3 - q1) / med if med else 1
     conf = "high" if len(kept) >= 15 and spread < 0.4 else "medium" if len(kept) >= 5 else "low"
-    return {"query": query, "estimate": round(med, 2), "low": round(q1, 2),
-            "high": round(q3, 2), "n": len(kept), "confidence": conf}
+    return {"query": query, "estimate": round(med, 2), "low": round(q1, 2), "high": round(q3, 2), "n": len(kept), "confidence": conf, "comparables": kept,}
 
 if __name__ == "__main__":
     path = FIXTURES / "ebay_iphone13.json"
