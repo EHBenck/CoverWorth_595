@@ -340,6 +340,25 @@ def fetch_live_valuation(item_id, cookies):
 
     return response.json()
 
+def fetch_valuation_history(item_id, cookies):
+    """Retrieve previous valuations for an inventory item."""
+
+    if not cookies:
+        raise PermissionError("Please sign in first.")
+
+    session = authenticated_session(cookies)
+
+    response = session.get(
+        f"{BACKEND_URL}/api/item/{item_id}/valuation/history/",
+        timeout=15,
+    )
+
+    if response.status_code in (401, 403):
+        raise PermissionError("Your session expired or access was denied.")
+
+    response.raise_for_status()
+
+    return response.json()
 
 def accept_live_valuation(item_id, valuation_run_id, cookies):
     if not cookies:
@@ -454,6 +473,96 @@ async def valuations_page():
 
             valuation_table.refresh()
 
+    async def show_valuation_history(item):
+        item_id = item.get("public_id")
+
+        if not item_id:
+            ui.notify("This item has no Django item ID.", type="warning")
+            return
+
+        try:
+            cookies = app.storage.user.get("auth_cookies")
+
+            result = await run.io_bound(
+                fetch_valuation_history,
+                item_id,
+                cookies,
+            )
+
+        except (requests.RequestException, PermissionError) as error:
+            ui.notify(f"Could not load valuation history: {error}", type="negative")
+            return
+
+        history = result.get("history", [])
+
+        with ui.dialog() as dialog, ui.card().classes("w-[750px] max-w-full p-5 gap-4"):
+
+            with ui.row().classes("w-full items-center justify-between"):
+                ui.label(
+                    f'Valuation History — {item["name"]}'
+                ).classes("text-xl font-bold")
+
+                ui.button(
+                    icon="close",
+                    on_click=dialog.close,
+                ).props("flat round")
+
+            if not history:
+                ui.label("No previous valuations found.")
+
+            for valuation in history:
+                estimate = valuation.get("estimate")
+                date = valuation.get("requested_at", "")
+                comparables = valuation.get("comparables", [])
+
+                with ui.expansion(
+                    f'${estimate:,.2f}' if estimate is not None else "No estimate",
+                    icon="history",
+                ).classes("w-full border rounded-lg"):
+
+                    ui.label(f"Date: {date[:10]}")
+                    ui.label(
+                        f'Estimated range: '
+                        f'${valuation["range_low"]:,.2f} – '
+                        f'${valuation["range_high"]:,.2f}'
+                    )
+                    ui.label(
+                        f'Comparable listings used: {valuation["sample_count"]}'
+                    )
+
+                    ui.separator()
+
+                    if not comparables:
+                        ui.label(
+                            "No comparable listing evidence saved for this valuation."
+                        ).classes("text-sm text-gray-500")
+
+                    for listing in comparables:
+                        with ui.row().classes(
+                            "w-full items-center justify-between gap-3"
+                        ):
+                            with ui.column().classes("gap-1 flex-1"):
+                                ui.label(
+                                    listing["title"]
+                                ).classes("text-sm")
+
+                                if listing.get("url"):
+                                    ui.link(
+                                        "View on eBay",
+                                        listing["url"],
+                                        new_tab=True,
+                                    ).classes("text-xs")
+
+                            ui.label(
+                                f'${listing["price"]:,.2f}'
+                            ).classes("font-semibold")
+
+            ui.button(
+                "Close",
+                on_click=dialog.close,
+            ).props("outline color=primary")
+
+        dialog.open()
         
     async def accept_valuation():
         result = live_valuation["result"]
@@ -811,7 +920,7 @@ async def valuations_page():
                         ):
                             with ui.menu():
                                 ui.menu_item("View Item")
-                                ui.menu_item("Valuation History")
+                                ui.menu_item("Valuation History", on_click=lambda item=item: show_valuation_history(item))
                                 ui.menu_item("Update Valuation")
 
                 def render_valuation_footer():
