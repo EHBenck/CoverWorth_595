@@ -13,10 +13,10 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST, require_GET
 
 from myapp.forms import ItemForm
-from myapp.models import Category, Inventory, Item, ValuationRun
+from myapp.models import Category, Inventory, Item, ValuationRun, ValuationSourceResult, ComparableListing
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
@@ -803,6 +803,27 @@ def item_valuation_api(request, item_id):
             started_at=timezone.now(),
             completed_at=timezone.now(),
         )
+        source_result = ValuationSourceResult.objects.create(
+        valuation_run=valuation_run,
+        source="ebay",
+        status="success",
+        results_found=len(rows),
+        results_used=result["n"],
+        source_estimate=Decimal(str(result["estimate"])),
+        currency="USD",
+        )
+
+        for listing in result["comparables"]:
+            ComparableListing.objects.create(
+            source_result=source_result,
+            external_listing_id=listing.listing_id,
+            url=listing.url,
+            title=listing.title,
+            price=listing.price,
+            currency="USD",
+            condition_normalized=listing.condition or "",
+            included_in_estimate=True,
+        )
 
     return JsonResponse({
         "item_id": str(item.public_id),
@@ -822,6 +843,68 @@ def item_valuation_api(request, item_id):
         ),
     })
 
+@require_GET
+def item_valuation_history_api(request, item_id):
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    item = get_object_or_404(
+        Item,
+        public_id=item_id,
+        inventory__owner=request.user,
+        archived_at__isnull=True,
+    )
+
+    runs = (
+        ValuationRun.objects
+        .filter(item=item)
+        .order_by("-requested_at")
+    )
+
+    history = []
+
+    for run in runs:
+        comparables = []
+        for source in run.source_results.all():
+            for listing in source.comparable_listings.all():
+                comparables.append({
+                    "title": listing.title,
+                    "price": float(listing.price) if listing.price is not None else None,
+                    "url": listing.url,
+                    "listing_id": listing.external_listing_id,
+                    "condition": listing.condition_normalized,
+                })
+        history.append({
+            "valuation_run_id": str(run.public_id),
+            "estimate": (
+                float(run.estimated_amount)
+                if run.estimated_amount is not None
+                else None
+            ),
+            "range_low": (
+                float(run.range_low)
+                if run.range_low is not None
+                else None
+            ),
+            "range_high": (
+                float(run.range_high)
+                if run.range_high is not None
+                else None
+            ),
+            "sample_count": run.sample_count,
+            "status": run.status,
+            "requested_at": run.requested_at.isoformat(),
+            "comparables": comparables,
+        })
+
+    return JsonResponse({
+        "item_id": str(item.public_id),
+        "item_name": item.name,
+        "history": history,
+    })
 
 @require_POST
 def accept_valuation_api(request, item_id):
