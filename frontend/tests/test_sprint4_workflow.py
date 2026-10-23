@@ -10,11 +10,14 @@ so it is not covered here.
 """
 
 import asyncio
+import base64
+from datetime import datetime
 import uuid
 
 import pytest
 from nicegui import ui
 from nicegui.testing import User
+from nicegui.testing.user_interaction import UserInteraction
 
 from tests import app_under_test
 from tests.conftest import PASSWORD
@@ -32,19 +35,56 @@ from tests.ui_helpers import (
 pytestmark = pytest.mark.module_under_test(app_under_test)
 
 JPEG = b"\xff\xd8\xff fake jpeg"
-PDF = b"%PDF-1.4 fake"
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+)
+
+
+def receipt_pdf() -> bytes:
+    """A complete one-page PDF, including its cross-reference table."""
+    content = b"BT /F1 12 Tf 30 100 Td (Test receipt) Tj ET\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"endstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    data = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(data))
+        data.extend(f"{number} 0 obj\n".encode() + body + b"\nendobj\n")
+    xref = len(data)
+    data.extend(b"xref\n0 6\n0000000000 65535 f \n")
+    for offset in offsets:
+        data.extend(f"{offset:010d} 00000 n \n".encode())
+    data.extend(f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    return bytes(data)
+
+
+PDF = receipt_pdf()
 
 
 def images(user: User) -> list[str]:
     with user:
-        return [image.source for image in user.find(kind=ui.image).elements]
+        return [element.source for element in user.client.elements.values() if isinstance(element, ui.image)]
+
+
+def inventory_filter(user: User, default_option: str):
+    with user:
+        return next(
+            element for element in user.find(kind=ui.select).elements
+            if default_option in element.options
+        )
 
 
 # ------------------------------------------------------------
 # PRIMARY WORKFLOW
 # ------------------------------------------------------------
 
-async def test_primary_workflow_through_the_pages(user: User, api) -> None:
+@pytest.mark.parametrize("run_valuation", [False, True], ids=["inventory_only", "with_valuation"])
+async def test_primary_workflow_through_the_pages(user: User, api, run_valuation: bool) -> None:
     username = f"flow_{uuid.uuid4().hex[:8]}"
 
     # Register (lands on the dashboard, signed in)
@@ -104,7 +144,7 @@ async def test_primary_workflow_through_the_pages(user: User, api) -> None:
     # View Item from the inventory list
     await user.open("/inventory")
     await user.should_see(kind=ui.link, content="iPhone 13", retries=20)
-    assert any("/media/item_attachments/" in source for source in images(user))
+    assert any(source.startswith("/attachments/") for source in images(user))
     user.find(kind=ui.link, content="iPhone 13").click()
     await user.should_see("Item Information", retries=20)
     await user.should_see("Phones")
@@ -127,20 +167,21 @@ async def test_primary_workflow_through_the_pages(user: User, api) -> None:
         ("receipt.pdf", "receipt"),
     ]
 
-    # Run Valuation and Accept it
-    await user.open("/valuations")
-    await user.should_see("iPhone 13 Blue", retries=20)
-    click_button(user, "Update")
-    await user.should_see("Live estimate: $247.00", retries=20)
-    click_button(user, "Accept $247.00")
-    await user.should_see("Valuation saved: $247.00", retries=20)
+    # Keep the optional valuation journey separate from inventory-only coverage.
+    if run_valuation:
+        await user.open("/valuations")
+        await user.should_see("iPhone 13 Blue", retries=20)
+        click_button(user, "Update")
+        await user.should_see("Live estimate: $247.00", retries=20)
+        click_button(user, "Accept $247.00")
+        await user.should_see("Valuation saved: $247.00", retries=20)
 
-    detail = api.item(item_id).json()["item"]
-    assert detail["current_estimated_amount"] == "247.00"
-    assert detail["valuation_date"] is not None
+        detail = api.item(item_id).json()["item"]
+        assert detail["current_estimated_amount"] == "247.00"
+        assert detail["valuation_date"] is not None
 
-    await user.open(f"/item/{item_id}")
-    await user.should_see("Last valued", retries=20)
+        await user.open(f"/item/{item_id}")
+        await user.should_see("Last valued", retries=20)
 
     # Archive Item from the inventory menu
     await user.open("/inventory")
@@ -270,14 +311,297 @@ async def test_attachment_can_be_removed_on_the_edit_page(user: User, account, a
 async def test_primary_photo_shows_on_dashboard_and_inventory(user: User, account, api) -> None:
     api.create_category("Phones")
     item_id = api.add_phone()
-    photo_url = api.upload(item_id, "phone.jpg", JPEG, "image/jpeg")["file_url"]
+    attachment = api.upload(item_id, "phone.jpg", JPEG, "image/jpeg")
+    photo_url = f"/attachments/{attachment['public_id']}"
 
     await sign_in(user, account)
-    assert any(source.endswith(photo_url) for source in images(user))
+    assert photo_url in images(user)
 
     await user.open("/inventory")
     await user.should_see(kind=ui.link, content="iPhone 13", retries=20)
-    assert any(source.endswith(photo_url) for source in images(user))
+    assert photo_url in images(user)
+
+
+# ------------------------------------------------------------
+# CATEGORY CONTEXT / EXACT RECENCY / ITEM FORM REGRESSIONS
+# ------------------------------------------------------------
+
+async def test_category_view_items_opens_inventory_with_that_filter(user: User, account, api) -> None:
+    for category_name in ("Home & Office", "Furniture"):
+        api.create_category(category_name)
+    categories = api.get(f"/api/inventory/{api.inventory_id()}/add-item/").json()["categories"]
+    category_ids = {category["name"]: category["id"] for category in categories}
+    api.add_phone(name="Office camera", category=category_ids["Home & Office"])
+    api.add_phone(name="Living room chair", category=category_ids["Furniture"])
+    await sign_in(user, account)
+    await user.open("/categories")
+    await user.should_see("Home & Office", retries=20)
+
+    with user:
+        card = next(
+            element for element in user.client.elements.values()
+            if isinstance(element, ui.card) and "category-card" in element.classes
+            and any(getattr(child, "text", None) == "Home & Office" for child in element.descendants())
+        )
+        button = next(
+            child for child in card.descendants()
+            if isinstance(child, ui.button) and child.text == "View Items"
+        )
+    UserInteraction(user, {button}, "View Items").click()
+
+    await user.should_see(kind=ui.link, content="Office camera", retries=20)
+    await user.should_not_see(kind=ui.link, content="Living room chair")
+    assert inventory_filter(user, "All Categories").value == "Home & Office"
+    with user:
+        inventory_filter(user, "All Categories").value = "All Categories"
+    await user.should_see(kind=ui.link, content="Living room chair", retries=20)
+
+
+async def test_unknown_category_query_keeps_inventory_usable(user: User, account, api) -> None:
+    api.create_category("Phones")
+    api.add_phone()
+    await sign_in(user, account)
+    await user.open("/inventory?category=Category%20that%20no%20longer%20exists")
+    await user.should_see(kind=ui.link, content="iPhone 13", retries=20)
+    assert inventory_filter(user, "All Categories").value == "All Categories"
+
+
+async def test_recently_updated_orders_categories_within_the_same_day(user: User, account, api, seed_backend) -> None:
+    older = api.create_category("Alpha")
+    newer = api.create_category("Zebra")
+    seed_backend(f"""
+        from datetime import datetime, timezone
+        from myapp.models import Category
+        Category.objects.filter(public_id={older['public_id']!r}).update(
+            updated_at=datetime(2026, 1, 8, 9, 0, tzinfo=timezone.utc))
+        Category.objects.filter(public_id={newer['public_id']!r}).update(
+            updated_at=datetime(2026, 1, 8, 9, 1, tzinfo=timezone.utc))
+    """)
+    rows = api.get(f"/api/inventory/{api.inventory_id()}/categories/").json()["categories"]
+    expected = [
+        row["name"] for row in sorted(
+            rows, key=lambda row: datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00")),
+            reverse=True,
+        )
+    ]
+    assert expected == ["Zebra", "Alpha"]
+    await sign_in(user, account)
+    await user.open("/categories")
+    await user.should_see("Zebra", retries=20)
+    with user:
+        inventory_filter(user, "Recently Updated").value = "Recently Updated"
+        labels = sorted(
+            (element for element in user.client.elements.values()
+             if isinstance(element, ui.label) and "category-name" in element.classes),
+            key=lambda element: element.id,
+        )
+    assert [label.text for label in labels] == expected
+
+
+@pytest.mark.parametrize("quantity", [0, -1, 1.5, None], ids=["zero", "negative", "fraction", "blank"])
+async def test_add_item_rejects_invalid_quantity_without_saving(user: User, account, api, quantity) -> None:
+    api.create_category("Phones")
+    await sign_in(user, account)
+    await user.open(f"/add-item/{api.inventory_id()}")
+    await user.should_see("Item Name *", retries=20)
+    user.find("Item Name *").type("Do not save this item")
+    user.find("Category *").click()
+    user.find("Phones").click()
+    set_value(user, "Date Acquired *", "2025-09-01")
+    set_value(user, "Purchase Price ($) *", 20)
+    set_value(user, "Quantity", quantity)
+    click_button(user, "Add Item")
+
+    await user.should_see("Quantity must be a whole number of at least 1.", retries=20)
+    assert api.get("/api/items/").json()["items"] == []
+
+
+@pytest.mark.parametrize("quantity", [0, -1, 1.5, None], ids=["zero", "negative", "fraction", "blank"])
+async def test_edit_item_rejects_invalid_quantity_without_saving(user: User, account, api, quantity) -> None:
+    api.create_category("Phones")
+    item_id = api.add_phone(name="Original name", quantity="3")
+    await sign_in(user, account)
+    await user.open(f"/edit-item/{item_id}")
+    await user.should_see("Update the details for Original name.", retries=20)
+    await user.should_see("Save Changes", retries=20)
+    user.find("Item Name *").clear().type("Do not save this edit")
+    set_value(user, "Quantity", quantity)
+    click_button(user, "Save Changes")
+
+    await user.should_see("Quantity must be a whole number of at least 1.", retries=20)
+    saved = api.item(item_id).json()["item"]
+    assert (saved["name"], saved["quantity"]) == ("Original name", 3)
+
+
+async def test_edit_item_displays_and_preserves_explicit_zero_values(user: User, account, api) -> None:
+    api.create_category("Phones")
+    item_id = api.add_phone(name="Gift", purchase_amount="0.00", manual_value="0.00")
+    await sign_in(user, account)
+    await user.open(f"/edit-item/{item_id}")
+    await user.should_see("Update the details for Gift.", retries=20)
+    await user.should_see("Save Changes", retries=20)
+    with user:
+        for label in ("Purchase Price ($) *", "Manual Value ($)"):
+            assert next(iter(user.find(label).elements)).value == 0
+    user.find("Item Name *").clear().type("Gift kept at home")
+    click_button(user, "Save Changes")
+    await user.should_see("Item updated successfully.", retries=20)
+    saved = api.item(item_id).json()["item"]
+    assert saved["name"] == "Gift kept at home"
+    assert saved["purchase_amount"] == "0.00"
+    assert saved["manual_value"] == "0.00"
+
+
+async def test_inventory_location_filter_uses_persisted_locations(user: User, account, api, seed_backend) -> None:
+    api.create_category("Equipment")
+    office_id = api.add_phone(name="Office camera")
+    attic_id = api.add_phone(name="Attic lamp")
+    seed_backend(f"""
+        from django.db import transaction
+        from myapp.models import Item, Location
+        with transaction.atomic():
+            for item_id, location_name in {[(office_id, 'Office'), (attic_id, 'Attic')]!r}:
+                item = Item.objects.get(public_id=item_id, inventory__owner__username={account['username']!r})
+                location = Location.objects.create(inventory=item.inventory, name=location_name)
+                item.location = location
+                item.save(update_fields=['location', 'updated_at'])
+    """)
+    await sign_in(user, account)
+    await user.open("/inventory")
+    await user.should_see(kind=ui.link, content="Office camera", retries=20)
+    await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
+    selector = inventory_filter(user, "All Locations")
+    assert set(selector.options) == {"All Locations", "Office", "Attic"}
+    with user:
+        selector.value = "Office"
+    await user.should_see(kind=ui.link, content="Office camera", retries=20)
+    await user.should_not_see(kind=ui.link, content="Attic lamp")
+    with user:
+        selector.value = "Attic"
+    await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
+    await user.should_not_see(kind=ui.link, content="Office camera")
+    with user:
+        selector.value = "All Locations"
+    await user.should_see(kind=ui.link, content="Office camera", retries=20)
+    await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
+
+
+# ------------------------------------------------------------
+# PRIVATE ATTACHMENT NAVIGATION / FILE DELIVERY
+# ------------------------------------------------------------
+
+@pytest.mark.parametrize("failure", ["stream", "send"])
+async def test_attachment_stream_releases_upstream_on_failure(failure) -> None:
+    from utilities.attachments import _AttachmentResponse
+
+    closed = []
+
+    async def content():
+        if failure == "stream":
+            raise RuntimeError("stream failed")
+        yield b"attachment data"
+
+    async def receive():
+        await asyncio.Event().wait()
+
+    async def send(message):
+        if failure == "send" and message["type"] == "http.response.body":
+            raise RuntimeError("send failed")
+
+    response = _AttachmentResponse(content(), headers={}, close=lambda: closed.append(True))
+    with pytest.raises(RuntimeError, match=f"{failure} failed"):
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("filename,content,content_type,file_type", [
+    ("photo.png", PNG, "image/png", "photo"),
+    ("receipt.pdf", PDF, "application/pdf", "receipt"),
+])
+async def test_attachment_eye_opens_readable_owner_file(
+    user: User, account, api, monkeypatch, filename, content, content_type, file_type,
+) -> None:
+    api.create_category("Phones")
+    item_id = api.add_phone()
+    attachment = api.upload(item_id, filename, content, content_type, file_type)
+    await sign_in(user, account)
+    await user.open(f"/edit-item/{item_id}")
+    await user.should_see(filename, retries=20)
+
+    opened = []
+    monkeypatch.setattr(ui.navigate, "to", lambda target, *, new_tab=False: opened.append((target, new_tab)))
+    click_icon_button(user, "visibility")
+    path = f"/attachments/{attachment['public_id']}"
+    assert opened == [(path, True)]
+
+    response = await user.http_client.get(path)
+    assert response.status_code == 200, response.text
+    assert response.content == content
+    assert response.headers["content-type"].split(";")[0] == content_type
+    assert "no-store" in response.headers["cache-control"]
+    head = await user.http_client.head(path)
+    assert head.status_code == 200
+    assert head.content == b""
+    assert int(head.headers["content-length"]) == len(content)
+
+
+async def test_pdf_only_item_uses_dashboard_icon_instead_of_receipt_thumbnail(user: User, account, api) -> None:
+    api.create_category("Equipment")
+    item_id = api.add_phone(name="Receipt-only item")
+    attachment = api.upload(item_id, "receipt.pdf", PDF, "application/pdf", "receipt")
+    await sign_in(user, account)
+    await user.should_see(kind=ui.link, content="Receipt-only item", retries=20)
+    assert f"/attachments/{attachment['public_id']}" not in images(user)
+    with user:
+        row = next(
+            element for element in user.client.elements.values()
+            if "recent-item" in element.classes
+            and any(getattr(child, "text", None) == "Receipt-only item" for child in element.descendants())
+        )
+        assert not any(isinstance(child, ui.image) for child in row.descendants())
+        assert any(isinstance(child, ui.icon) for child in row.descendants())
+
+
+async def test_private_attachment_denies_anonymous_and_other_users(user: User, account, api) -> None:
+    api.create_category("Phones")
+    attachment = api.upload(api.add_phone(), "private.png", PNG, "image/png")
+    path = f"/attachments/{attachment['public_id']}"
+    await open_login(user)
+    assert (await user.http_client.get(path)).status_code == 401
+
+    other_api = type(api)(api.url)
+    other_account = {"username": f"other_{uuid.uuid4().hex[:8]}", "password": PASSWORD}
+    other_api.register(other_account["username"])
+    await sign_in(user, other_account)
+    response = await user.http_client.get(path)
+    assert response.status_code == 404
+    assert response.content != PNG
+
+
+@pytest.mark.parametrize("archive_target", ["attachment", "item", "inventory"])
+async def test_private_attachment_stops_serving_after_archive(user: User, account, api, archive_target) -> None:
+    api.create_category("Phones")
+    inventory_id = api.inventory_id()
+    item_id = api.add_phone()
+    attachment = api.upload(item_id, "private.png", PNG, "image/png")
+    path = f"/attachments/{attachment['public_id']}"
+    await sign_in(user, account)
+    assert (await user.http_client.get(path)).content == PNG
+
+    if archive_target == "inventory":
+        created = api.post("/api/inventories/", json={"name": "Replacement"})
+        assert created.status_code == 201, created.text
+        response = api.post(f"/api/inventories/{inventory_id}/archive/", json={})
+    else:
+        endpoint = (
+            f"/api/attachment/{attachment['public_id']}/"
+            if archive_target == "attachment" else f"/api/item/{item_id}/edit/"
+        )
+        response = api.session.delete(f"{api.url}{endpoint}", headers=api._headers(), timeout=5)
+    assert response.status_code == 200, response.text
+    denied = await user.http_client.get(path)
+    assert denied.status_code == 404
+    assert denied.content != PNG
 
 
 # ------------------------------------------------------------

@@ -10,6 +10,7 @@ import importlib
 import backend_client
 import utilities.inventory_table
 import utilities.nav_wrapper
+from utilities.attachments import register_attachment_routes
 from pages import (
     add_item,
     categories,
@@ -41,3 +42,5 @@ PAGE_MODULES = [
 
 for module in PAGE_MODULES:
     importlib.reload(module)
+
+register_attachment_routes()

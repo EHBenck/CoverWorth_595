@@ -43,8 +43,8 @@ pytest_plugins = ["nicegui.testing.user_plugin"]
 PASSWORD = "Sturdy-passphrase-42"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def backend_server(tmp_path_factory):
+@pytest.fixture(scope="session")
+def backend_runtime(tmp_path_factory):
     work_dir = tmp_path_factory.mktemp("backend")
     (work_dir / "integration_settings.py").write_text(
         textwrap.dedent(
@@ -106,11 +106,40 @@ def backend_server(tmp_path_factory):
             )
         time.sleep(0.2)
 
-    yield url
+    yield {"url": url, "env": env, "database": work_dir / "db.sqlite3"}
 
     server.terminate()
     server.wait(timeout=10)
     log_file.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def backend_server(backend_runtime):
+    return backend_runtime["url"]
+
+
+@pytest.fixture
+def seed_backend(backend_runtime):
+    """Seed data with no creation API, only in this session's disposable database."""
+    def seed(code: str) -> None:
+        guard = (
+            "from pathlib import Path\n"
+            "from django.conf import settings\n"
+            f"assert Path(settings.DATABASES['default']['NAME']).resolve() == "
+            f"Path({str(backend_runtime['database'])!r}).resolve(), "
+            "'Refusing to seed a non-test database'\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "manage.py", "shell", "-c", guard + textwrap.dedent(code)],
+            cwd=BACKEND_DIR,
+            env=backend_runtime["env"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    return seed
 
 
 class BackendApi:

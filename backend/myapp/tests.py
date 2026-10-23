@@ -1,16 +1,21 @@
+import importlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Barrier
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import connections
-from django.test import Client, TestCase, TransactionTestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import OperationalError, connections
+from django.test import Client, TestCase, TransactionTestCase, override_settings
+from django.urls import clear_url_caches, reverse
 from django.utils import timezone
 
-from myapp.models import Attachment, Category, Inventory, Item
+from myapp.models import Attachment, Category, Inventory, Item, Location, ValuationRun
 from myapp.test_integration import FrontendClient, PASSWORD
 
 
@@ -739,6 +744,65 @@ class InventoryManagementTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(item.valuation_runs.exists())
 
+    def test_archived_inventory_keeps_valuations_but_blocks_history_and_acceptance(self):
+        item = Item.objects.create(
+            inventory=self.office, name="Laptop", current_estimated_amount=Decimal("100.00"),
+        )
+        valuation = ValuationRun.objects.create(
+            item=item, requested_by=self.owner, status="success",
+            estimated_amount=Decimal("250.00"), sample_count=3,
+        )
+        history_path = f"/api/item/{item.public_id}/valuation/history/"
+        before = self.client.get(history_path)
+        self.assertEqual(before.status_code, 200, before.content)
+        self.assertEqual(before.json()["history"][0]["valuation_run_id"], str(valuation.public_id))
+
+        self.assertEqual(self._archive(self.office).status_code, 200)
+        self.assertEqual(self.client.get(history_path).status_code, 404)
+        response = self._write(
+            "post", f"/api/item/{item.public_id}/valuation/accept/",
+            {"valuation_run_id": str(valuation.public_id)},
+        )
+        self.assertEqual(response.status_code, 404, response.content)
+        item.refresh_from_db()
+        valuation.refresh_from_db()
+        self.assertEqual(item.current_estimated_amount, Decimal("100.00"))
+        self.assertIsNone(item.valuation_date)
+        self.assertEqual(valuation.item_id, item.pk)
+        self.assertEqual(valuation.estimated_amount, Decimal("250.00"))
+        self.assertEqual(valuation.status, "success")
+
+    def test_sqlite_authentication_lock_returns_retryable_error_for_inventory_requests(self):
+        if connections["default"].vendor != "sqlite":
+            self.skipTest("SQLite-specific authentication lock contention")
+        token = self.client.get("/api/auth/csrf/").cookies["csrftoken"].value
+        before_count = Inventory.objects.filter(owner=self.owner).count()
+        requests = [
+            ("get", "/api/inventories/", None),
+            ("post", "/api/inventories/", {"name": "Blocked creation"}),
+            ("patch", f"/api/inventories/{self.office.public_id}/", {"name": "Changed"}),
+            ("post", f"/api/inventories/{self.office.public_id}/archive/", {}),
+        ]
+        for method, path, payload in requests:
+            with self.subTest(method=method, path=path):
+                request_kwargs = {"HTTP_X_CSRFTOKEN": token}
+                if method != "get":
+                    request_kwargs.update(data=json.dumps(payload), content_type="application/json")
+                # A competing archive may lock auth_user before this request's
+                # lazy request.user lookup runs. Return a retryable error.
+                with patch(
+                    "django.contrib.auth.get_user",
+                    side_effect=OperationalError("database table is locked: auth_user"),
+                ):
+                    response = getattr(self.client, method)(path, **request_kwargs)
+                self.assertEqual(response.status_code, 409, response.content)
+                self.assertFalse(response.json()["success"])
+        self.office.refresh_from_db()
+        self.assertEqual(self.office.name, "Office")
+        self.assertIsNone(self.office.archived_at)
+        self.assertEqual(Inventory.objects.filter(owner=self.owner).count(), before_count)
+        self.assertEqual(self.client.session["active_inventory_id"], str(self.home.public_id))
+
 
 class ConcurrentInventoryArchiveTests(TransactionTestCase):
     """Two simultaneous archive requests must never consume the last inventory."""
@@ -776,3 +840,244 @@ class ConcurrentInventoryArchiveTests(TransactionTestCase):
         self.assertEqual(sorted(statuses), [200, 409])
         self.assertEqual(Inventory.objects.filter(owner=owner, archived_at__isnull=True).count(), 1)
         self.assertEqual(Inventory.objects.filter(owner=owner).count(), 2)
+
+
+class POCRegressionTests(TestCase):
+    """API regressions found while exercising existing inventory workflows."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(username="poc-regression-owner")
+        cls.inventory = Inventory.objects.create(owner=cls.owner, name="Main")
+        cls.category = Category.objects.create(inventory=cls.inventory, name="Equipment")
+        cls.item = Item.objects.create(
+            inventory=cls.inventory, category=cls.category, name="Camera",
+            purchase_amount=Decimal("0.00"), manual_value=Decimal("0.00"),
+        )
+        cls.unpriced_item = Item.objects.create(inventory=cls.inventory, name="Unpriced")
+
+    def setUp(self):
+        self.media_root = self.enterContext(TemporaryDirectory(prefix="coverworth-poc-media-"))
+        self.enterContext(override_settings(MEDIA_ROOT=self.media_root))
+        self.client = Client(enforce_csrf_checks=True, raise_request_exception=False)
+        self.client.force_login(self.owner)
+        self.csrf_token = self.client.get("/api/auth/csrf/").cookies["csrftoken"].value
+        self.client.get("/api/inventories/")
+
+    def _write_json(self, method, path, payload):
+        return getattr(self.client, method)(
+            path, data=json.dumps(payload), content_type="application/json",
+            HTTP_X_CSRFTOKEN=self.csrf_token,
+        )
+
+    def _recent_item(self, item):
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        return next(row for row in response.json()["recent_items"] if row["public_id"] == str(item.public_id))
+
+    def test_inventory_creation_rejects_whitespace_without_changing_selection(self):
+        response = self._write_json("post", "/api/inventories/", {"name": " \t\n "})
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("name", response.json()["errors"])
+        self.assertEqual(Inventory.objects.filter(owner=self.owner).count(), 1)
+        self.assertEqual(self.client.session["active_inventory_id"], str(self.inventory.public_id))
+
+    def test_inventory_creation_validates_trimmed_name_length(self):
+        name = "a" * 255
+        response = self._write_json("post", "/api/inventories/", {"name": f"  {name}  "})
+        self.assertEqual(response.status_code, 201, response.content)
+        created = Inventory.objects.get(public_id=response.json()["inventory"]["public_id"])
+        self.assertEqual(created.name, name)
+
+    def test_category_writes_reject_nonobject_json_without_changes(self):
+        paths = [
+            ("post", f"/api/inventory/{self.inventory.public_id}/categories/"),
+            ("put", f"/api/category/{self.category.public_id}/"),
+        ]
+        for method, path in paths:
+            for payload in ([], "category", 17, True, None):
+                with self.subTest(method=method, payload=payload):
+                    response = self._write_json(method, path, payload)
+                    self.assertEqual(response.status_code, 400, response.content[:200])
+                    self.assertFalse(response.json()["success"])
+                    self.assertIn("error", response.json())
+                    self.assertEqual(Category.objects.filter(inventory=self.inventory).count(), 1)
+                    self.category.refresh_from_db()
+                    self.assertEqual(self.category.name, "Equipment")
+
+    def test_item_edit_preserves_zero_and_missing_purchase_manual_amounts(self):
+        for item, expected in ((self.item, "0.00"), (self.unpriced_item, None)):
+            with self.subTest(item=item.name):
+                response = self.client.get(f"/api/item/{item.public_id}/edit/")
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()["item"]
+                self.assertEqual(payload["purchase_amount"], expected)
+                self.assertEqual(payload["manual_value"], expected)
+
+    def test_inventory_detail_preserves_zero_and_missing_purchase_manual_amounts(self):
+        response = self.client.get(f"/api/inventory/{self.inventory.public_id}/")
+        self.assertEqual(response.status_code, 200)
+        rows = {row["public_id"]: row for row in response.json()["items"]}
+        for item, expected in ((self.item, "0.00"), (self.unpriced_item, None)):
+            with self.subTest(item=item.name):
+                self.assertEqual(rows[str(item.public_id)]["purchase_amount"], expected)
+                self.assertEqual(rows[str(item.public_id)]["manual_value"], expected)
+
+    def test_attachment_delete_rejects_archived_item_without_mutating_attachment(self):
+        attachment = Attachment.objects.create(item=self.item, file="poc/receipt.pdf", file_type="receipt")
+        self.item.archived_at = timezone.now()
+        self.item.save(update_fields=["archived_at"])
+        response = self.client.delete(
+            f"/api/attachment/{attachment.public_id}/", HTTP_X_CSRFTOKEN=self.csrf_token,
+        )
+        self.assertEqual(response.status_code, 404, response.content)
+        attachment.refresh_from_db()
+        self.assertIsNone(attachment.archived_at)
+
+    def test_dashboard_receipt_only_item_has_no_photo_thumbnail(self):
+        Attachment.objects.create(item=self.item, file="poc/receipt.pdf", file_type="receipt")
+        self.assertIsNone(self._recent_item(self.item)["image_url"])
+
+    def test_dashboard_uses_active_primary_photo_instead_of_receipt_or_archived_photo(self):
+        Attachment.objects.create(item=self.item, file="poc/receipt.pdf", file_type="receipt")
+        Attachment.objects.create(item=self.item, file="poc/secondary.png", file_type="photo")
+        primary = Attachment.objects.create(
+            item=self.item, file="poc/primary.png", file_type="photo", is_primary=True,
+        )
+        Attachment.objects.create(
+            item=self.item, file="poc/archived.png", file_type="photo",
+            is_primary=True, archived_at=timezone.now(),
+        )
+        response = self.client.get(f"/api/item/{self.item.public_id}/attachments/")
+        self.assertEqual(response.status_code, 200)
+        expected_url = next(row["file_url"] for row in response.json()["attachments"] if row["public_id"] == str(primary.public_id))
+        self.assertEqual(self._recent_item(self.item)["image_url"], expected_url)
+
+    def test_inventory_detail_exposes_persisted_locations_and_missing_location(self):
+        office = Location.objects.create(inventory=self.inventory, name="Office")
+        attic = Location.objects.create(inventory=self.inventory, name="Attic")
+        self.item.location = office
+        self.item.save(update_fields=["location"])
+        attic_item = Item.objects.create(inventory=self.inventory, name="Lamp", location=attic)
+        response = self.client.get(f"/api/inventory/{self.inventory.public_id}/")
+        self.assertEqual(response.status_code, 200)
+        rows = {row["public_id"]: row for row in response.json()["items"]}
+        self.assertEqual(rows[str(self.item.public_id)]["location"], "Office")
+        self.assertEqual(rows[str(attic_item.public_id)]["location"], "Attic")
+        self.assertIsNone(rows[str(self.unpriced_item.public_id)]["location"])
+
+    def _upload_attachment(self, name="photo.png", content=b"\x89PNG\r\n\x1a\nphoto", mime_type="image/png", file_type="photo"):
+        response = self.client.post(
+            f"/api/item/{self.item.public_id}/attachments/",
+            {"file": SimpleUploadedFile(name, content, content_type=mime_type), "file_type": file_type},
+            HTTP_X_CSRFTOKEN=self.csrf_token,
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        data = response.json()["attachment"]
+        return Attachment.objects.get(public_id=data["public_id"]), data
+
+    def test_all_attachment_urls_use_the_authenticated_file_route(self):
+        attachment, uploaded = self._upload_attachment()
+        expected = reverse("attachment-file", kwargs={"attachment_id": attachment.public_id})
+        self.assertEqual(uploaded["file_url"], expected)
+        listing = self.client.get(f"/api/item/{self.item.public_id}/attachments/").json()
+        self.assertEqual(listing["attachments"][0]["file_url"], expected)
+        self.assertEqual(self._recent_item(self.item)["image_url"], expected)
+        inventory = self.client.get(f"/api/inventory/{self.inventory.public_id}/").json()
+        row = next(item for item in inventory["items"] if item["public_id"] == str(self.item.public_id))
+        self.assertEqual(row["primary_photo_url"], expected)
+
+    def test_owner_can_get_and_head_attachment_with_private_safe_headers(self):
+        content = b"\x89PNG\r\n\x1a\nexact photo bytes"
+        attachment, _ = self._upload_attachment(content=content)
+        path = f"/api/attachment/{attachment.public_id}/file/"
+        response = self.client.get(path)
+        self.addCleanup(response.close)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), content)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertTrue(response["Content-Disposition"].startswith("inline;"))
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        head = self.client.head(path)
+        self.addCleanup(head.close)
+        self.assertEqual(head.status_code, 200)
+        self.assertEqual(head["Content-Length"], str(len(content)))
+        self.assertEqual(head["Content-Type"], "image/png")
+        self.assertEqual(b"".join(head.streaming_content), b"")
+
+    def test_attachment_download_requires_the_owner_for_get_and_head(self):
+        attachment, _ = self._upload_attachment()
+        path = f"/api/attachment/{attachment.public_id}/file/"
+        other = Client()
+        other.force_login(User.objects.create_user(username="poc-other-owner"))
+        for client, expected in ((Client(), 401), (other, 404)):
+            for method in ("get", "head"):
+                with self.subTest(expected=expected, method=method):
+                    self.assertEqual(getattr(client, method)(path).status_code, expected)
+
+    def test_attachment_download_rejects_archived_attachment_item_or_inventory(self):
+        attachment, _ = self._upload_attachment()
+        path = f"/api/attachment/{attachment.public_id}/file/"
+        for archived in (attachment, self.item, self.inventory):
+            with self.subTest(archived_model=type(archived).__name__):
+                archived.archived_at = timezone.now()
+                archived.save(update_fields=["archived_at"])
+                try:
+                    self.assertEqual(self.client.get(path).status_code, 404)
+                    self.assertEqual(self.client.head(path).status_code, 404)
+                finally:
+                    archived.archived_at = None
+                    archived.save(update_fields=["archived_at"])
+
+    def test_attachment_download_missing_record_or_file_returns_json_404(self):
+        missing = Attachment.objects.create(item=self.item, file="missing/not-there.png", file_type="photo")
+        empty = Attachment.objects.create(item=self.item, file="", file_type="other")
+        for public_id in (uuid4(), missing.public_id, empty.public_id):
+            with self.subTest(public_id=public_id):
+                response = self.client.get(f"/api/attachment/{public_id}/file/")
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response["Content-Type"], "application/json")
+                self.assertIn("error", response.json())
+
+    def test_untrusted_html_and_svg_are_downloads_even_with_image_metadata(self):
+        samples = [
+            ("unsafe.html", b"<html><script>alert(1)</script></html>", "image/png"),
+            ("unsafe.svg", b"<svg xmlns='http://www.w3.org/2000/svg'></svg>", "image/svg+xml"),
+        ]
+        for name, content, mime_type in samples:
+            with self.subTest(filename=name):
+                attachment, _ = self._upload_attachment(name, content, mime_type, "other")
+                response = self.client.get(f"/api/attachment/{attachment.public_id}/file/")
+                self.addCleanup(response.close)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"], "application/octet-stream")
+                self.assertTrue(response["Content-Disposition"].startswith("attachment;"))
+                self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+                self.assertEqual(b"".join(response.streaming_content), content)
+
+    def test_pdf_receipt_is_served_inline_to_its_owner(self):
+        content = b"%PDF-1.4\nsynthetic receipt\n%%EOF"
+        attachment, _ = self._upload_attachment("receipt.pdf", content, "application/pdf", "receipt")
+        response = self.client.get(f"/api/attachment/{attachment.public_id}/file/")
+        self.addCleanup(response.close)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response["Content-Disposition"].startswith("inline;"))
+        self.assertEqual(b"".join(response.streaming_content), content)
+
+    def test_debug_media_urls_do_not_bypass_attachment_authentication(self):
+        attachment, _ = self._upload_attachment()
+        raw_url = attachment.file.url
+        urlconf = importlib.import_module(settings.ROOT_URLCONF)
+        # Rebuild URL patterns with DEBUG enabled to cover the development
+        # media route as well as the normal test runner's DEBUG=False setting.
+        try:
+            with override_settings(DEBUG=True):
+                importlib.reload(urlconf)
+                clear_url_caches()
+                self.assertEqual(Client().get(raw_url).status_code, 404)
+                self.assertEqual(self.client.get(raw_url).status_code, 404)
+        finally:
+            importlib.reload(urlconf)
+            clear_url_caches()

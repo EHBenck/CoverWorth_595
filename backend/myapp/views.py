@@ -9,8 +9,9 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction, OperationalError, connection
 from django.db.models import Count, Q, F
-from django.http import Http404, JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
@@ -21,6 +22,11 @@ from myapp.models import Inventory, Item, ValuationRun, ValuationSourceResult, C
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
+
+def _attachment_file_url(attachment):
+    """Keep private storage paths out of API responses."""
+    return reverse("attachment-file", kwargs={"attachment_id": attachment.public_id})
+
 
 @ensure_csrf_cookie
 def auth_csrf(request):
@@ -200,7 +206,11 @@ def _active_inventory(request):
 
 @require_http_methods(["GET", "POST"])
 def inventories_api(request):
-    if not request.user.is_authenticated:
+    try:
+        is_authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not is_authenticated:
         return JsonResponse(
             {"error": "Authentication required."},
             status=401,
@@ -269,7 +279,7 @@ def inventories_api(request):
 
     inventory = Inventory(
         owner=request.user,
-        name=fields["name"],
+        name=fields["name"].strip(),
         description=fields["description"],
         inventory_type=fields["inventory_type"],
         default_currency=fields["default_currency"].upper(),
@@ -370,7 +380,11 @@ def select_inventory_api(request):
 @require_http_methods(["PATCH"])
 def update_inventory_api(request, inventory_id):
     """Rename or describe an owned, unarchived inventory without switching it."""
-    if not request.user.is_authenticated:
+    try:
+        is_authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
@@ -444,7 +458,11 @@ def update_inventory_api(request, inventory_id):
 @require_POST
 def archive_inventory_api(request, inventory_id):
     """Soft-archive an owned inventory, always leaving a usable replacement."""
-    if not request.user.is_authenticated:
+    try:
+        is_authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
@@ -528,8 +546,10 @@ def dashboard_summary(request):
         )
 
     for item in items[:5]:
-        attachment = item.attachments.filter(archived_at__isnull=True).first()
-        image_url = attachment.file.url if attachment and attachment.file else None
+        attachment = item.attachments.filter(
+            file_type="photo", archived_at__isnull=True,
+        ).order_by("-is_primary", "-uploaded_at").first()
+        image_url = _attachment_file_url(attachment) if attachment and attachment.file else None
 
         recent_items.append(
             {
@@ -753,8 +773,8 @@ def edit_item_api(request, item_id):
                     'condition': item.condition,
                     'quantity': item.quantity,
                     'purchase_date': item.purchase_date.isoformat() if item.purchase_date else None,
-                    'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
-                    'manual_value': str(item.manual_value) if item.manual_value else None,
+                    'purchase_amount': str(item.purchase_amount) if item.purchase_amount is not None else None,
+                    'manual_value': str(item.manual_value) if item.manual_value is not None else None,
                     'notes': item.notes,
                 },
                 'categories': list(categories),
@@ -820,7 +840,7 @@ def inventory_detail_api(request, inventory_id):
                 status=403
             )
         
-        items = inventory.items.filter(archived_at__isnull=True).order_by('-updated_at')
+        items = inventory.items.filter(archived_at__isnull=True).select_related('category', 'location').order_by('-updated_at')
 
         items_data = []
         for item in items:
@@ -833,11 +853,12 @@ def inventory_detail_api(request, inventory_id):
                 'public_id': str(item.public_id),
                 'name': item.name,
                 'category': item.category.name if item.category else 'Uncategorized',
+                'location': item.location.name if item.location else None,
                 'condition': item.get_condition_display(),
-                'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
+                'purchase_amount': str(item.purchase_amount) if item.purchase_amount is not None else None,
                 'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
-                'manual_value': str(item.manual_value) if item.manual_value else None,
-                'primary_photo_url': primary_photo.file.url if primary_photo and primary_photo.file else None,
+                'manual_value': str(item.manual_value) if item.manual_value is not None else None,
+                'primary_photo_url': _attachment_file_url(primary_photo) if primary_photo and primary_photo.file else None,
             })
 
         return JsonResponse({
@@ -965,7 +986,13 @@ def item_attachments_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
-    item = get_object_or_404(Item, public_id=item_id)
+    item = Item.objects.filter(
+        public_id=item_id,
+        archived_at__isnull=True,
+        inventory__archived_at__isnull=True,
+    ).first()
+    if item is None:
+        return JsonResponse({"success": False, "error": "Item not found."}, status=404)
     if item.inventory.owner != request.user:
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
@@ -977,7 +1004,7 @@ def item_attachments_api(request, item_id):
                 {
                     "public_id": str(att.public_id),
                     "file_type": att.file_type,
-                    "file_url": att.file.url if att.file else "",
+                    "file_url": _attachment_file_url(att) if att.file else "",
                     "original_filename": att.original_filename,
                     "file_size": att.file_size,
                     "is_primary": att.is_primary,
@@ -1013,10 +1040,64 @@ def item_attachments_api(request, item_id):
             "attachment": {
                 "public_id": str(attachment.public_id),
                 "file_type": attachment.file_type,
-                "file_url": attachment.file.url,
+                "file_url": _attachment_file_url(attachment),
                 "original_filename": attachment.original_filename,
             }
         }, status=201)
+
+
+def _attachment_content_type(header):
+    """Only common raster images and PDFs are eligible for inline display.
+
+    Inspect bytes instead of trusting the uploaded filename or MIME metadata.
+    HTML, SVG and other formats remain ordinary downloads.
+    """
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if header.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "image/webp"
+    if header.startswith(b"%PDF-"):
+        return "application/pdf"
+    return "application/octet-stream"
+
+
+@require_http_methods(["GET", "HEAD"])
+def attachment_file_api(request, attachment_id):
+    """Serve an owned attachment while respecting all three archive levels."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    attachment = Attachment.objects.filter(
+        public_id=attachment_id,
+        item__inventory__owner=request.user,
+        archived_at__isnull=True,
+        item__archived_at__isnull=True,
+        item__inventory__archived_at__isnull=True,
+    ).first()
+    if attachment is None or not attachment.file:
+        return JsonResponse({"error": "Attachment not found."}, status=404)
+
+    try:
+        opened_file = attachment.file.open("rb")
+        content_type = _attachment_content_type(opened_file.read(16))
+        opened_file.seek(0)
+    except (OSError, ValueError):
+        attachment.file.close()
+        return JsonResponse({"error": "File not found."}, status=404)
+
+    response = FileResponse(
+        opened_file,
+        content_type=content_type,
+        as_attachment=(content_type == "application/octet-stream"),
+        filename=attachment.original_filename or attachment.file.name.rsplit("/", 1)[-1],
+    )
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_http_methods(["DELETE"])
@@ -1028,6 +1109,8 @@ def attachment_detail_api(request, attachment_id):
     attachment = Attachment.objects.filter(
         public_id=attachment_id,
         archived_at__isnull=True,
+        item__archived_at__isnull=True,
+        item__inventory__archived_at__isnull=True,
     ).first()
     if attachment is None:
         return JsonResponse({"success": False, "error": "Attachment not found."}, status=404)
@@ -1043,7 +1126,14 @@ def attachment_detail_api(request, attachment_id):
 def item_valuation_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
-    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    item = Item.objects.filter(
+        public_id=item_id,
+        inventory__owner=request.user,
+        archived_at__isnull=True,
+        inventory__archived_at__isnull=True,
+    ).first()
+    if item is None:
+        return JsonResponse({"error": "Item not found."}, status=404)
     query = " ".join(
         part.strip()
         for part in [item.name, item.brand, item.model_number]
@@ -1140,12 +1230,14 @@ def item_valuation_history_api(request, item_id):
             status=401,
         )
 
-    item = get_object_or_404(
-        Item,
+    item = Item.objects.filter(
         public_id=item_id,
         inventory__owner=request.user,
         archived_at__isnull=True,
-    )
+        inventory__archived_at__isnull=True,
+    ).first()
+    if item is None:
+        return JsonResponse({"error": "Item not found."}, status=404)
 
     runs = (
         ValuationRun.objects
@@ -1360,6 +1452,9 @@ def category_list_api(request, inventory_id):
             status=400,
         )
 
+    if not isinstance(payload, dict):
+        return JsonResponse({"success": False, "error": "Expected a JSON object."}, status=400)
+
     name = str(payload.get("name", "")).strip()
 
     description = str(payload.get("description", "")).strip()
@@ -1495,6 +1590,9 @@ def category_detail_api(
             },
             status=400,
         )
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"success": False, "error": "Expected a JSON object."}, status=400)
 
     name = str(
         payload.get(

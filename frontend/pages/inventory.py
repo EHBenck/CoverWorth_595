@@ -4,6 +4,7 @@ from nicegui import app, run, ui
 import requests
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
+from utilities.attachments import attachment_url
 from backend_client import (
     BACKEND_URL,
     authenticated_session,
@@ -255,7 +256,7 @@ def fetch_inventory_items(
                     else "Review"
                 ),
                 "icon": item.get("icon") or "inventory_2",
-                "primary_photo_url": item.get("primary_photo_url"),
+                "primary_photo_url": attachment_url(item.get("primary_photo_url") or ""),
             })
 
         return normalized_items
@@ -286,7 +287,7 @@ def fetch_inventory_categories(
 
 # INVENTORY PAGE
 @ui.page("/inventory")
-async def inventory_page():
+async def inventory_page(category: str = ""):
     if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/dashboard")
         return
@@ -451,7 +452,7 @@ async def inventory_page():
 
                 category_filter = ui.select(
                     category_options,
-                    value="All Categories",
+                    value=category if category in category_options else "All Categories",
                     on_change=lambda _: refresh_inventory(),
                 ).props(
                     "outlined dense"
@@ -582,8 +583,7 @@ async def inventory_page():
                     with ui.element("div").classes("item-icon overflow-hidden"):
                         photo_url = item.get("primary_photo_url")
                         if photo_url:
-                            full_url = f"{BACKEND_URL}{photo_url}" if photo_url.startswith("/") else photo_url
-                            ui.image(full_url).classes("w-full h-full object-cover")
+                            ui.image(photo_url).classes("w-full h-full object-cover")
                         else:
                             ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 

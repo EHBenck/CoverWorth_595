@@ -1,4 +1,5 @@
 from nicegui import app, ui
+from utilities.inventory_management import show_inventory_management
 from utilities.nav_wrapper import build_app_shell
 
 # SETTINGS PAGE
@@ -271,7 +272,7 @@ async def settings_page():
 
             ui.label("Settings").classes("text-4xl " "font-bold " "tracking-tight")
 
-            ui.label(("Manage your account " "and security.")).classes(
+            ui.label("Manage your inventories, account, and security.").classes(
                 "text-base muted"
             )
 
@@ -285,10 +286,20 @@ async def settings_page():
 
                 with ui.column().classes("settings-nav-list " "w-full gap-1"):
 
+                    # INVENTORIES
+                    # -----------------------------------------
+                    with ui.row().classes(
+                        "settings-nav-item settings-nav-active items-center gap-3"
+                    ):
+                        ui.icon("inventory_2").classes("text-xl")
+                        ui.link("Inventories", "#inventories").classes(
+                            "text-sm text-inherit no-underline"
+                        )
+
                     # ACCOUNT
                     # -----------------------------------------
                     with ui.row().classes(
-                        "settings-nav-item " "settings-nav-active " "items-center gap-3"
+                        "settings-nav-item " "items-center gap-3"
                     ):
 
                         ui.icon("person").classes("text-xl")
@@ -306,6 +317,8 @@ async def settings_page():
             # RIGHT CONTENT
             # =================================================
             with ui.column().classes("w-full gap-5"):
+
+                show_inventory_management()
 
                 # ACCOUNT
                 # =================================================

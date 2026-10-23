@@ -21,8 +21,6 @@ from django.http import JsonResponse
 from django.urls import path
 from myapp.models import Item
 from myapp import views
-from django.conf.urls.static import static
-from django.conf import settings
 
 def health_check(request):
     """Verify Django and the database are connected."""
@@ -75,6 +73,7 @@ urlpatterns = [
     path('api/item/<uuid:item_id>/edit/', views.edit_item_api, name='edit_item_api'),
     path('api/item/<uuid:item_id>/attachments/', views.item_attachments_api, name='item_attachments_api'),
     path('api/attachment/<uuid:attachment_id>/', views.attachment_detail_api, name='attachment_detail_api'),
+    path('api/attachment/<uuid:attachment_id>/file/', views.attachment_file_api, name='attachment-file'),
     path("api/health/", health_check, name="health-check"),
     path("api/auth/csrf/", views.auth_csrf, name="auth-csrf"),
     path("api/auth/login/", views.auth_login, name="auth-login"),
@@ -92,8 +91,4 @@ urlpatterns = [
     path("api/inventories/<uuid:inventory_id>/", views.update_inventory_api, name="update-inventory-api"),
     path("api/inventories/<uuid:inventory_id>/archive/", views.archive_inventory_api, name="archive-inventory-api"),
 ]
-
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
