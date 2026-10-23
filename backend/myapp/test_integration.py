@@ -14,9 +14,24 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
-
-from myapp.models import Category, Inventory, Item
-
+from myapp.models import (
+    Category,
+    Inventory,
+    Item,
+    ValuationRun,
+    ValuationSourceResult,
+    ComparableListing,
+)
+from unittest.mock import patch
+from myapp.models import (
+    Category,
+    Inventory,
+    Item,
+    ValuationRun,
+    ValuationSourceResult,
+    ComparableListing,
+)
+from inventory_manager.pipeline.schemas import Listing
 
 User = get_user_model()
 
@@ -426,3 +441,153 @@ class BasicApiErrorTestCase(TestCase):
         self.owner.logout()
 
         self.assertEqual(self.owner.get("/api/dashboard/").status_code, 401)
+
+class ValuationPersistenceTestCase(TestCase):
+    def setUp(self):
+        self.frontend = FrontendClient()
+        self.frontend.register("valuation_user")
+
+        inventory = Inventory.objects.get(
+            owner__username="valuation_user"
+        )
+
+        category = Category.objects.create(
+            inventory=inventory,
+            name="Electronics",
+        )
+
+        self.item = Item.objects.create(
+            inventory=inventory,
+            category=category,
+            name="iPhone 13 128GB",
+            brand="Apple",
+            purchase_amount=Decimal("400.00"),
+        )
+
+    @patch("myapp.views.search_ebay")
+    def test_valuation_saves_comparable_listings(self, mock_search):
+        mock_search.return_value = [
+            Listing(
+                title="Apple iPhone 13 128GB Unlocked",
+                price=Decimal("200.00"),
+                condition="used",
+                listing_id="test-001",
+                url="https://www.ebay.com/itm/001",
+            ),
+            Listing(
+                title="Apple iPhone 13 128GB Unlocked",
+                price=Decimal("250.00"),
+                condition="used",
+                listing_id="test-002",
+                url="https://www.ebay.com/itm/002",
+            ),
+            Listing(
+                title="Apple iPhone 13 128GB Unlocked",
+                price=Decimal("300.00"),
+                condition="used",
+                listing_id="test-003",
+                url="https://www.ebay.com/itm/003",
+            ),
+        ]
+
+        response = self.frontend.post_form(
+            f"/api/item/{self.item.public_id}/valuation/",
+            {},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        valuation = ValuationRun.objects.get(item=self.item)
+
+        self.assertEqual(valuation.estimated_amount, Decimal("250.00"))
+
+        source = ValuationSourceResult.objects.get(
+            valuation_run=valuation,
+            source="ebay",
+        )
+
+        self.assertEqual(source.results_used, 3)
+        self.assertEqual(source.comparable_listings.count(), 3)
+
+        listing = ComparableListing.objects.get(
+            source_result=source,
+            external_listing_id="test-001",
+        )
+
+        self.assertEqual(listing.price, Decimal("200.00"))
+        self.assertEqual(listing.url, "https://www.ebay.com/itm/001")
+
+    def test_valuation_history_returns_saved_evidence(self):
+        valuation = ValuationRun.objects.create(
+            item=self.item,
+            requested_by=User.objects.get(username="valuation_user"),
+            estimated_amount=Decimal("250.00"),
+            range_low=Decimal("200.00"),
+            range_high=Decimal("300.00"),
+            sample_count=3,
+            status="completed",
+        )
+
+        source = ValuationSourceResult.objects.create(
+            valuation_run=valuation,
+            source="ebay",
+            status="success",
+            results_found=3,
+            results_used=3,
+            source_estimate=Decimal("250.00"),
+            currency="USD",
+        )
+
+        ComparableListing.objects.create(
+            source_result=source,
+            external_listing_id="test-001",
+            title="Apple iPhone 13 128GB Unlocked",
+            price=Decimal("250.00"),
+            url="https://www.ebay.com/itm/001",
+            currency="USD",
+            condition_normalized="used",
+            included_in_estimate=True,
+        )
+
+        response = self.frontend.get(
+            f"/api/item/{self.item.public_id}/valuation/history/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        history = response.json()["history"]
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["estimate"], 250.00)
+        self.assertEqual(history[0]["sample_count"], 3)
+        self.assertEqual(len(history[0]["comparables"]), 1)
+        self.assertEqual(
+            history[0]["comparables"][0]["listing_id"],
+            "test-001",
+        )
+
+    def test_other_user_cannot_view_valuation_history(self):
+        # Create a valuation belonging to our original user.
+        ValuationRun.objects.create(
+            item=self.item,
+            requested_by=User.objects.get(username="valuation_user"),
+            estimated_amount=Decimal("250.00"),
+            range_low=Decimal("200.00"),
+            range_high=Decimal("300.00"),
+            sample_count=3,
+            status="completed",
+        )
+
+        # Create and authenticate a different user.
+        other_frontend = FrontendClient()
+
+        response = other_frontend.register("other_user")
+        self.assertEqual(response.status_code, 201)
+
+        # Attempt to access the original user's item.
+        response = other_frontend.get(
+            f"/api/item/{self.item.public_id}/valuation/history/"
+        )
+
+        # The endpoint must not expose another user's data.
+        self.assertEqual(response.status_code, 404)

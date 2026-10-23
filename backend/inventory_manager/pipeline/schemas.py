@@ -6,3 +6,5 @@ class Listing:
     title: str
     price: Decimal
     condition: str | None
+    listing_id: str = ""
+    url: str = ""
