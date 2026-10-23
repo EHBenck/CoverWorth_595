@@ -379,6 +379,7 @@ class BasicApiErrorTestCase(TestCase):
         intruder = FrontendClient()
         intruder.register("mallory")
 
+        # Item detail answers 404 so it does not reveal that the item exists.
         for path in self.protected_paths()[2:]:
             with self.subTest(path):
                 expected_status = (
@@ -386,11 +387,7 @@ class BasicApiErrorTestCase(TestCase):
                     if path == f"/api/item/{self.item.public_id}/"
                     else 403
                 )
-
-        self.assertEqual(
-            intruder.get(path).status_code,
-            expected_status,
-        )
+                self.assertEqual(intruder.get(path).status_code, expected_status)
 
         response = intruder.post_form(
             f"/api/item/{self.item.public_id}/edit/",

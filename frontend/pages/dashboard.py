@@ -1,5 +1,4 @@
 import os
-from django.template import response
 import requests
 from nicegui import app, run, ui
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
@@ -75,7 +74,6 @@ def show_login_page(error_message=""):
 
                 app.storage.user["auth_cookies"] = session.cookies.get_dict()
                 app.storage.user["username"] = response.json()["username"]
-                print("[LOGIN] Saved cookies to storage:", app.storage.user.get("auth_cookies"))
                 ui.navigate.to("/dashboard")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
@@ -464,7 +462,7 @@ def attention_banner(dashboard_data) -> None:
 async def root_page():
     await ui.context.client.connected()
 
-    show_login_page()
+    show_login_page(app.storage.user.pop("login_message", ""))
 
 @ui.page("/dashboard")
 async def dashboard_page():
@@ -494,7 +492,8 @@ async def dashboard_page():
     if api_data is None:
         app.storage.user.pop("auth_cookies", None)
         app.storage.user.pop("username", None)
-        ui.navigate.reload()
+        app.storage.user["login_message"] = "Your session expired. Please sign in again."
+        ui.navigate.to("/")
         return
 
     loading.delete()

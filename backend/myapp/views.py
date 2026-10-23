@@ -16,7 +16,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 
 from myapp.forms import ItemForm
-from myapp.models import Category, Inventory, Item, ValuationRun, ValuationSourceResult, ComparableListing, Attachment
+from myapp.models import Inventory, Item, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
 
 
 from inventory_manager.pipeline.ebay_client import search_ebay
@@ -576,9 +576,9 @@ def edit_item_api(request, item_id):
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
-        # Get the item and check ownership
-        item = get_object_or_404(Item, public_id=item_id)
-        
+        # Get the item and check ownership. Archived items can no longer be edited.
+        item = get_object_or_404(Item, public_id=item_id, archived_at__isnull=True)
+
         current_user = request.user
         if item.inventory.owner != current_user:
             return JsonResponse(
@@ -819,7 +819,9 @@ def item_attachments_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
-    item = get_object_or_404(Item, public_id=item_id)
+    item = Item.objects.filter(public_id=item_id, archived_at__isnull=True).first()
+    if item is None:
+        return JsonResponse({"success": False, "error": "Item not found."}, status=404)
     if item.inventory.owner != request.user:
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
@@ -847,6 +849,9 @@ def item_attachments_api(request, item_id):
 
         if not uploaded_file:
             return JsonResponse({"success": False, "error": "No file uploaded."}, status=400)
+
+        if file_type not in AttachmentType.values:
+            return JsonResponse({"success": False, "error": "Invalid file type."}, status=400)
 
         attachment = Attachment.objects.create(
             item=item,
@@ -876,7 +881,12 @@ def attachment_detail_api(request, attachment_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
-    attachment = get_object_or_404(Attachment, public_id=attachment_id)
+    attachment = Attachment.objects.filter(
+        public_id=attachment_id,
+        archived_at__isnull=True,
+    ).first()
+    if attachment is None:
+        return JsonResponse({"success": False, "error": "Attachment not found."}, status=404)
     if attachment.item.inventory.owner != request.user:
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
@@ -889,7 +899,13 @@ def attachment_detail_api(request, attachment_id):
 def item_valuation_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
-    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    item = Item.objects.filter(
+        public_id=item_id,
+        inventory__owner=request.user,
+        archived_at__isnull=True,
+    ).first()
+    if item is None:
+        return JsonResponse({"error": "Item not found."}, status=404)
     query = " ".join(
         part.strip()
         for part in [item.name, item.brand, item.model_number]
@@ -903,7 +919,8 @@ def item_valuation_api(request, item_id):
     try: 
         rows = search_ebay(query)
         result = estimate(rows, query, want_condition=condition)
-    except (requests.exceptions.RequestException, RuntimeError):
+    # ValueError / KeyError: eBay answered, but not with the listing JSON we expect.
+    except (requests.exceptions.RequestException, RuntimeError, ValueError, KeyError):
         return JsonResponse({"error": "Unable to retrieve eBay listings"}, status=502,)
     
     valuation_run = None
@@ -1063,19 +1080,31 @@ def accept_valuation_api(request, item_id):
             status=400,
         )
 
-    item = get_object_or_404(
-        Item,
+    try:
+        run_id = UUID(str(run_id))
+    except ValueError:
+        return JsonResponse(
+            {"error": "Invalid valuation_run_id."},
+            status=400,
+        )
+
+    item = Item.objects.filter(
         public_id=item_id,
         inventory__owner=request.user,
         archived_at__isnull=True,
-    )
+    ).first()
 
-    valuation_run = get_object_or_404(
-        ValuationRun,
+    if item is None:
+        return JsonResponse({"error": "Item not found."}, status=404)
+
+    valuation_run = ValuationRun.objects.filter(
         public_id=run_id,
         item=item,
         status="success",
-    )
+    ).first()
+
+    if valuation_run is None:
+        return JsonResponse({"error": "Valuation not found."}, status=404)
 
     if valuation_run.estimated_amount is None:
         return JsonResponse(

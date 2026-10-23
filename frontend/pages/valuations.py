@@ -302,6 +302,23 @@ def fetch_inventory_items(cookies):
 
     return response.json().get("items", [])
 
+def raise_for_backend_error(response):
+    """Raise with the backend's own message (e.g. "Unable to retrieve eBay listings")."""
+
+    if response.ok:
+        return
+
+    try:
+        message = response.json().get("error")
+    except ValueError:
+        message = None
+
+    raise requests.HTTPError(
+        message or f"Server returned {response.status_code}.",
+        response=response,
+    )
+
+
 def fetch_live_valuation(item_id, cookies):
     """Request a live valuation from Django."""
 
@@ -319,7 +336,7 @@ def fetch_live_valuation(item_id, cookies):
     if response.status_code in (401, 403):
         raise PermissionError("Your session expired or access was denied.")
 
-    response.raise_for_status()
+    raise_for_backend_error(response)
 
     return response.json()
 
@@ -344,16 +361,22 @@ def fetch_valuation_history(item_id, cookies):
     return response.json()
 
 def accept_live_valuation(item_id, valuation_run_id, cookies):
+    if not cookies:
+        raise PermissionError("Please sign in first.")
+
     session = authenticated_session(cookies)
 
     response = session.post(
-        f"http://127.0.0.1:8000/api/item/{item_id}/valuation/accept/",
+        f"{BACKEND_URL}/api/item/{item_id}/valuation/accept/",
         json={"valuation_run_id": valuation_run_id},
         headers=csrf_headers(session),
         timeout=30,
     )
 
-    response.raise_for_status()
+    if response.status_code in (401, 403):
+        raise PermissionError("Your session expired or access was denied.")
+
+    raise_for_backend_error(response)
     return response.json()
 
 # ============================================================
@@ -363,12 +386,19 @@ def accept_live_valuation(item_id, valuation_run_id, cookies):
 @ui.page("/valuations")
 async def valuations_page():
 
+    if not app.storage.user.get("auth_cookies"):
+        ui.navigate.to("/")
+        return
+
     ui.page_title(
         "Valuations | CoverWorth"
     )
 
 
-    build_app_shell("Valuations")
+    build_app_shell(
+        "Valuations",
+        username=app.storage.user.get("username", "User"),
+    )
 
     cookies = app.storage.user.get("auth_cookies")
 
@@ -409,6 +439,10 @@ async def valuations_page():
 
         except PermissionError as error:
             ui.notify(str(error), type="negative")
+            return
+
+        except requests.ConnectionError:
+            ui.notify("Could not connect to the backend.", type="negative")
             return
 
         except requests.RequestException as error:
