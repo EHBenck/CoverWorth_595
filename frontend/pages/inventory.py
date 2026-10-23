@@ -7,6 +7,7 @@ from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from backend_client import (
     BACKEND_URL,
     authenticated_session,
+    csrf_headers,
 )
 
 
@@ -254,6 +255,7 @@ def fetch_inventory_items(
                     else "Review"
                 ),
                 "icon": item.get("icon") or "inventory_2",
+                "primary_photo_url": item.get("primary_photo_url"),
             })
 
         return normalized_items
@@ -286,7 +288,7 @@ def fetch_inventory_categories(
 @ui.page("/inventory")
 async def inventory_page():
     if not app.storage.user.get("auth_cookies"):
-        ui.navigate.to("/")
+        ui.navigate.to("/dashboard")
         return
 
     ui.page_title(
@@ -329,6 +331,37 @@ async def inventory_page():
         state["items"] = fetch_inventory_items(inventory_id)
         state["categories"] = fetch_inventory_categories(inventory_id)
         inventory_rows.refresh()
+
+    ui.timer(0.1, reload_inventory, once=True)
+
+    async def confirm_and_delete_item(item_public_id: str, item_name: str):
+        def execute_delete(item_public_id: str, item_name: str):
+                try:
+                    session = authenticated_session()
+                    response = session.delete(
+                        f"{BACKEND_URL}/api/item/{item_public_id}/edit/",
+                        headers=csrf_headers(session),
+                        timeout=10,
+                    )
+                    data = response.json() if response.content else {}
+                    if response.ok and data.get("success", True):
+                        ui.notify(f"Item '{item_name}' deleted successfully.", type="positive")
+                        reload_inventory()
+                    else:
+                        ui.notify(data.get("error", "Failed to delete item."), type="negative")
+                except requests.RequestException as error:
+                    ui.notify(f"Connection error: {error}", type="negative")
+
+        with ui.dialog() as dialog, ui.card().classes("p-6 gap-4 min-w-[320px]"):
+            ui.label("Delete Item").classes("text-lg font-bold")
+            ui.label(f"Are you sure you want to delete '{item_name}'?").classes("text-sm muted")
+            with ui.row().classes("w-full justify-end gap-3 mt-2"):
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button(
+                    "Delete",
+                    on_click=lambda: [dialog.close(), execute_delete(item_public_id, item_name)]
+                ).props("unelevated color=red no-caps")
+        dialog.open()
 
 
     # MAIN PAGE CONTENT
@@ -546,8 +579,13 @@ async def inventory_page():
                     ui.label("Actions")
 
                 def render_inventory_row(item):
-                    with ui.element("div").classes("item-icon"):
-                        ui.icon(item["icon"]).classes("text-2xl text-slate-600")
+                    with ui.element("div").classes("item-icon overflow-hidden"):
+                        photo_url = item.get("primary_photo_url")
+                        if photo_url:
+                            full_url = f"{BACKEND_URL}{photo_url}" if photo_url.startswith("/") else photo_url
+                            ui.image(full_url).classes("w-full h-full object-cover")
+                        else:
+                            ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 
                     ui.link(item["name"],f'/item/{item["public_id"]}',).classes(
                         "text-sm "
@@ -586,8 +624,8 @@ async def inventory_page():
                             ui.separator()
                             ui.menu_item(
                                 "Delete",
-                                on_click=lambda item=item: ui.notify(
-                                    f'Delete {item["name"]}'
+                                on_click=lambda item=item: confirm_and_delete_item(
+                                    item["public_id"], item["name"]
                                 ),
                             )
 

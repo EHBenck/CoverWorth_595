@@ -8,22 +8,18 @@ from nicegui import app
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
-
 def authenticated_session(cookies=None) -> requests.Session:
     session = requests.Session()
-    cookie_domain = urlparse(BACKEND_URL).hostname
-
+    
     stored_cookies = (
         cookies
         if cookies is not None
         else app.storage.user.get("auth_cookies", {})
     )
-
-    for name, value in stored_cookies.items():
-        session.cookies.set(
-            name, value, domain=cookie_domain, path="/"
-        )
-
+    
+    if stored_cookies:
+        session.cookies.update(stored_cookies)
+        
     return session
 
 

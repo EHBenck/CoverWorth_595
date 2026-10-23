@@ -370,27 +370,104 @@ async def edit_item_page(item_id: str):
                     ).props("outlined rows=4").classes("w-full")
 
             # Right column
+            # Right column
             with ui.column().classes("w-full gap-5"):
                 with ui.card().classes("photo-panel w-full p-5 gap-4"):
-                    ui.label("Item Photo").classes("form-section-title")
+                    ui.label("Item Photos & Receipts").classes("form-section-title")
                     ui.label(
-                        "A clear photo makes this item easier to identify."
+                        "Upload photos or receipts to attach to this item."
                     ).classes("text-sm muted")
 
-                    with ui.column().classes(
-                        "photo-placeholder w-full items-center "
-                        "justify-center gap-2 p-5"
-                    ):
-                        ui.icon("add_photo_alternate").classes(
-                            "text-5xl text-slate-400"
-                        )
-                        ui.label("Photo upload").classes(
-                            "font-semibold text-slate-700"
-                        )
-                        ui.label(
-                            "Photo editing can be connected to your "
-                            "attachment API when supported."
-                        ).classes("text-xs muted text-center")
+                    attachments_container = ui.column().classes("w-full gap-3")
+
+                    async def refresh_attachments():
+                        attachments_container.clear()
+                        try:
+                            res = authenticated_session().get(
+                                f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+                                timeout=5,
+                            )
+                            att_list = res.json().get("attachments", []) if res.ok else []
+                        except requests.RequestException:
+                            att_list = []
+
+                        if not att_list:
+                            with attachments_container:
+                                with ui.column().classes(
+                                    "photo-placeholder w-full items-center justify-center gap-2 p-5"
+                                ):
+                                    ui.icon("folder_open").classes("text-4xl text-slate-400")
+                                    ui.label("No attachments yet").classes("font-semibold text-slate-700 text-sm")
+                            return
+
+                        with attachments_container:
+                            for att in att_list:
+                                with ui.row().classes(
+                                    "w-full items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg"
+                                ):
+                                    with ui.row().classes("items-center gap-2"):
+                                        icon_name = "receipt" if att["file_type"] == "receipt" else "image"
+                                        ui.icon(icon_name).classes("text-xl text-blue-600")
+                                        ui.label(att["original_filename"] or "Attachment").classes("text-sm font-medium truncate max-w-[160px]")
+                                    
+                                    with ui.row().classes("items-center gap-1"):
+                                        if att.get("file_url"):
+                                            ui.button(icon="visibility", on_click=lambda url=att["file_url"]: ui.open(url, new_tab=True)).props("flat round dense size=sm")
+                                        
+                                        def delete_att(aid=att["public_id"]):
+                                            try:
+                                                session = authenticated_session()
+                                                response = session.delete(
+                                                    f"{BACKEND_URL}/api/attachment/{aid}/",
+                                                    headers=csrf_headers(session),
+                                                    timeout=10,
+                                                )
+                                                if response.ok:
+                                                    ui.notify("Attachment deleted.", type="positive")
+                                                    refresh_attachments()
+                                                else:
+                                                    ui.notify("Failed to delete attachment.", type="negative")
+                                            except requests.RequestException:
+                                                ui.notify("Connection error.", type="negative")
+
+                                        ui.button(icon="delete", on_click=delete_att).props("flat round dense color=red size=sm")
+
+                    # File Uploader
+                    ui.upload(
+                        label="Upload Photo / Receipt",
+                        auto_upload=True,
+                        on_upload=lambda e: handle_file_upload(e),
+                    ).classes("w-full").props("accept=.jpg,.png,.jpeg,.pdf flat bordered")
+
+                    async def handle_file_upload(e):
+                        try:
+                            session = authenticated_session()
+                            # Await the file contents since read() is asynchronous
+                            file_bytes = await e.file.read()
+                            files = {"file": (e.file.name, file_bytes, e.file.content_type)}
+                            data = {
+                                "file_type": "receipt" 
+                                if "pdf" in e.file.content_type or "receipt" in e.file.name.lower() 
+                                else "photo"
+                            }
+                            
+                            response = session.post(
+                                f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+                                files=files,
+                                data=data,
+                                headers=csrf_headers(session),
+                                timeout=15,
+                            )
+                            if response.ok:
+                                ui.notify("File uploaded successfully!", type="positive")
+                                await refresh_attachments()
+                            else:
+                                ui.notify("Upload failed.", type="negative")
+                        except requests.RequestException as err:
+                            ui.notify(f"Error uploading: {err}", type="negative")
+
+                    # Initial load
+                    ui.timer(0.1, refresh_attachments, once=True)
 
                 with ui.row().classes(
                     "edit-item-tip w-full items-start gap-3 p-4 flex-nowrap"

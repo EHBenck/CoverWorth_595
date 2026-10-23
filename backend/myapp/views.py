@@ -16,7 +16,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from myapp.forms import ItemForm
-from myapp.models import Category, Inventory, Item, ValuationRun
+from myapp.models import Attachment, Category, Inventory, Item, ValuationRun
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
@@ -385,6 +385,9 @@ def dashboard_summary(request):
         )
 
     for item in items[:5]:
+        attachment = item.attachments.filter(archived_at__isnull=True).first()
+        image_url = attachment.file.url if attachment and attachment.file else None
+
         recent_items.append(
             {
                 "public_id": str(item.public_id),
@@ -402,6 +405,7 @@ def dashboard_summary(request):
                     "%b %d, %Y"
                 ).replace(" 0", " "),
                 "icon": "inventory_2",
+                "image_url": image_url,
             }
         )
 
@@ -564,7 +568,7 @@ def add_item_api(request, inventory_id):
             'error': str(e),
         }, status=500)
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "POST", "DELETE"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
     if not request.user.is_authenticated:
@@ -634,6 +638,14 @@ def edit_item_api(request, item_id):
                     'success': False,
                     'errors': errors,
                 }, status=400)
+
+        if request.method == 'DELETE':
+            item.archived_at = timezone.now()
+            item.save(update_fields=['archived_at', 'updated_at'])
+            return JsonResponse({
+                'success': True,
+                'message': f"Item '{item.name}' was deleted successfully.",
+            })
     
     except Http404:
         return JsonResponse({
@@ -663,9 +675,15 @@ def inventory_detail_api(request, inventory_id):
             )
         
         items = inventory.items.filter(archived_at__isnull=True).order_by('-updated_at')
-        
-        items_data = [
-            {
+
+        items_data = []
+        for item in items:
+            primary_photo = item.attachments.filter(
+                file_type='photo',
+                archived_at__isnull=True
+            ).order_by('-is_primary', '-uploaded_at').first()
+
+            items_data.append({
                 'public_id': str(item.public_id),
                 'name': item.name,
                 'category': item.category.name if item.category else 'Uncategorized',
@@ -673,10 +691,9 @@ def inventory_detail_api(request, inventory_id):
                 'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
                 'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
                 'manual_value': str(item.manual_value) if item.manual_value else None,
-            }
-            for item in items
-        ]
-        
+                'primary_photo_url': primary_photo.file.url if primary_photo and primary_photo.file else None,
+            })
+
         return JsonResponse({
             'success': True,
             'inventory': {
@@ -794,6 +811,78 @@ def item_detail_api(request, item_id):
             },
             status=404,
         )
+
+@require_http_methods(["GET", "POST"])
+def item_attachments_api(request, item_id):
+    """API endpoint to list or upload attachments for an item."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    item = get_object_or_404(Item, public_id=item_id)
+    if item.inventory.owner != request.user:
+        return JsonResponse({"success": False, "error": "Access denied."}, status=403)
+
+    if request.method == "GET":
+        attachments = item.attachments.filter(archived_at__isnull=True).order_by("-uploaded_at")
+        return JsonResponse({
+            "success": True,
+            "attachments": [
+                {
+                    "public_id": str(att.public_id),
+                    "file_type": att.file_type,
+                    "file_url": att.file.url if att.file else "",
+                    "original_filename": att.original_filename,
+                    "file_size": att.file_size,
+                    "is_primary": att.is_primary,
+                    "uploaded_at": att.uploaded_at.isoformat(),
+                }
+                for att in attachments
+            ]
+        })
+
+    if request.method == "POST":
+        uploaded_file = request.FILES.get("file")
+        file_type = request.POST.get("file_type", "photo")
+
+        if not uploaded_file:
+            return JsonResponse({"success": False, "error": "No file uploaded."}, status=400)
+
+        attachment = Attachment.objects.create(
+            item=item,
+            file=uploaded_file,
+            file_type=file_type,
+            original_filename=uploaded_file.name,
+            mime_type=getattr(uploaded_file, "content_type", ""),
+            file_size=uploaded_file.size,
+            is_primary=(file_type == "photo" and not item.attachments.filter(file_type="photo", archived_at__isnull=True).exists()),
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "File uploaded successfully.",
+            "attachment": {
+                "public_id": str(attachment.public_id),
+                "file_type": attachment.file_type,
+                "file_url": attachment.file.url,
+                "original_filename": attachment.original_filename,
+            }
+        }, status=201)
+
+
+@require_http_methods(["DELETE"])
+def attachment_detail_api(request, attachment_id):
+    """API endpoint to delete/archive an attachment."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    attachment = get_object_or_404(Attachment, public_id=attachment_id)
+    if attachment.item.inventory.owner != request.user:
+        return JsonResponse({"success": False, "error": "Access denied."}, status=403)
+
+    attachment.archived_at = timezone.now()
+    attachment.save(update_fields=["archived_at"])
+
+    return JsonResponse({"success": True, "message": "Attachment deleted successfully."})
 
 @require_POST
 def item_valuation_api(request, item_id):

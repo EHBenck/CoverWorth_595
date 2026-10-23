@@ -167,7 +167,20 @@ def load_add_item_options(
             "inventory_name": "Inventory",
             "categories": {},
         }
-
+    
+def upload_photo(session, item_id, filename, content, content_type):
+    """Send the picked photo to the same attachment endpoint the edit page uses."""
+    try:
+        res = session.post(
+            f"{BACKEND_URL}/api/item/{item_id}/attachments/",   # <- copy the real path from edit_item.py
+            data={"file_type": "photo"},                         # <- match what the edit page sends
+            files={"file": (filename, content, content_type)},   # <- match the edit page's field name
+            headers=csrf_headers(session),
+            timeout=30,
+        )
+        return res.ok
+    except requests.RequestException:
+        return False
 
 # PAGE
 # ============================================================
@@ -195,6 +208,10 @@ async def add_item_page(
     categories = options["categories"]
 
     inventory_name = options["inventory_name"]
+
+    uploaded_file = None
+    uploaded_filename = "item_photo.jpg"
+    uploaded_content_type = "image/jpeg"
 
     # MAIN CONTENT
     # ========================================================
@@ -417,7 +434,7 @@ async def add_item_page(
                                         value is None or value >= 0,
                                 }
                             )
-                            .props("outlined min=0")
+                            .props("outlined")
                             .classes("form-control w-full")
                         )
 
@@ -483,6 +500,7 @@ async def add_item_page(
                         ("Add a clear photo to make " "the item easier to identify.")
                     ).classes("text-sm muted")
 
+                    # Dashed visual placeholder container
                     with ui.column().classes(
                         "photo-placeholder "
                         "w-full "
@@ -501,22 +519,19 @@ async def add_item_page(
 
                         ui.label(("PNG or JPG image")).classes("text-xs muted")
 
-                    def photo_selected(event):
-
+                    async def photo_selected(e):
+                        nonlocal uploaded_file, uploaded_filename, uploaded_content_type
+                        uploaded_file = await e.file.read()
+                        uploaded_filename = e.file.name
+                        uploaded_content_type = e.file.content_type
                         ui.notify(
-                            (
-                                f"{event.name} selected. "
-                                "Photo persistence will "
-                                "be connected when the "
-                                "attachment API story "
-                                "is implemented."
-                            ),
-                            type="info",
+                            f"Photo '{e.file.name}' selected. It will upload when you add the item.",
+                            type="positive",
                         )
 
                     ui.upload(
                         label="Choose Photo",
-                        on_upload=(photo_selected),
+                        on_upload=photo_selected,
                         auto_upload=True,
                         max_files=1,
                     ).props("accept=image/*").classes("w-full")
@@ -566,6 +581,8 @@ async def add_item_page(
 
         # SUBMIT
         # ====================================================
+        # SUBMIT
+        # ====================================================
         async def submit_form():
 
             error_label.visible = False
@@ -604,89 +621,56 @@ async def add_item_page(
                 "notes": (notes_input.value or ""),
             }
 
+            # Prepare files dictionary if a photo was attached
             try:
-
                 session = authenticated_session()
-
                 response = session.post(
-                    (
-                        f"{BACKEND_URL}"
-                        f"/api/inventory/"
-                        f"{inventory_id}"
-                        "/add-item/"
-                    ),
+                    f"{BACKEND_URL}/api/inventory/{inventory_id}/add-item/",
                     data=form_data,
                     headers=csrf_headers(session),
                     timeout=10,
                 )
-
-                data = response.json()
-
-                if response.ok:
-
-                    success_label.text = data.get(
-                        "message",
-                        ("Item added " "successfully."),
-                    )
-
-                    success_label.visible = True
-
-                    ui.notify(
-                        "Item added successfully.",
-                        type="positive",
-                    )
-
-                    ui.timer(
-                        1.0,
-                        lambda: ui.navigate.to("/inventory"),
-                        once=True,
-                    )
-
-                    return
-
-                errors = data.get(
-                    "errors",
-                    {},
-                )
-
-                field_labels = {
-                    "name": name_error,
-                    "category": (category_error),
-                    "purchase_date": (date_error),
-                    "purchase_amount": (amount_error),
-                }
-
-                for (
-                    field,
-                    label,
-                ) in field_labels.items():
-
-                    if field in errors:
-
-                        message = errors[field]
-
-                        if isinstance(
-                            message,
-                            list,
-                        ):
-                            message = message[0] if message else ""
-
-                        label.text = str(message)
-
-                        label.visible = True
-
-                error_label.text = data.get(
-                    "error",
-                    ("Please correct " "the highlighted fields."),
-                )
-
-                error_label.visible = True
-
             except requests.RequestException:
-
-                error_label.text = "Could not connect " "to the backend."
-
+                error_label.text = "Could not connect to the backend."
                 error_label.visible = True
+                return
+
+            try:
+                result = response.json()
+            except ValueError:
+                result = {}
+
+            if not (response.ok and result.get("success")):
+                server_errors = result.get("errors", {})
+                for field, label in {
+                    "name": name_error,
+                    "category": category_error,
+                    "purchase_date": date_error,
+                    "purchase_amount": amount_error,
+                }.items():
+                    if field in server_errors:
+                        label.text = str(server_errors[field])
+                        label.visible = True
+                error_label.text = result.get(
+                    "error", "Couldn't add the item. Check the highlighted fields."
+                )
+                error_label.visible = True
+                return
+
+            item_id = result["item_id"]
+
+            if uploaded_file and not upload_photo(
+                session, item_id, uploaded_filename, uploaded_file, uploaded_content_type
+            ):
+                ui.notify(
+                    "Item added, but the photo didn't upload. You can add it here.",
+                    type="warning",
+                )
+                ui.navigate.to(f"/edit-item/{item_id}")
+                return
+
+            ui.notify("Item added successfully.", type="positive")
+            ui.navigate.to("/inventory")
 
         with ui.row().classes(
             "form-actions " "w-full " "items-center " "justify-between " "gap-4"
