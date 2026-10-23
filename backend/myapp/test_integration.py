@@ -366,7 +366,16 @@ class BasicApiErrorTestCase(TestCase):
 
         for path in self.protected_paths()[2:]:
             with self.subTest(path):
-                self.assertEqual(intruder.get(path).status_code, 403)
+                expected_status = (
+                    404
+                    if path == f"/api/item/{self.item.public_id}/"
+                    else 403
+                )
+
+        self.assertEqual(
+            intruder.get(path).status_code,
+            expected_status,
+        )
 
         response = intruder.post_form(
             f"/api/item/{self.item.public_id}/edit/",
