@@ -1,6 +1,7 @@
-from nicegui import app, ui
+import asyncio
+
+from nicegui import app, run, ui
 import requests
-from nicegui import ui
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from backend_client import (
@@ -192,9 +193,9 @@ ui.add_css("""
 """, shared=True)
 
 
-def fetch_inventory_id() -> str | None:
+def fetch_inventory_id(cookies: dict | None = None) -> str | None:
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/dashboard/",
             timeout=5,
         )
@@ -212,9 +213,12 @@ def fetch_inventory_id() -> str | None:
 
 
 
-def fetch_inventory_items(inventory_id: str) -> list[dict]:
+def fetch_inventory_items(
+    inventory_id: str,
+    cookies: dict | None = None,
+) -> list[dict]:
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL.rstrip('/')}/api/inventory/{inventory_id}/",
             timeout=10,
         )
@@ -260,9 +264,12 @@ def fetch_inventory_items(inventory_id: str) -> list[dict]:
 
 
 
-def fetch_inventory_categories(inventory_id: str) -> list[dict]:
+def fetch_inventory_categories(
+    inventory_id: str,
+    cookies: dict | None = None,
+) -> list[dict]:
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/inventory/{inventory_id}/categories/",
             timeout=5,
         )
@@ -278,8 +285,6 @@ def fetch_inventory_categories(inventory_id: str) -> list[dict]:
 # INVENTORY PAGE
 @ui.page("/inventory")
 async def inventory_page():
-    await ui.context.client.connected()
-
     if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
         return
@@ -290,18 +295,34 @@ async def inventory_page():
 
     build_app_shell("Inventory")
 
-    inventory_id = fetch_inventory_id()
+    with ui.column().classes(
+        "inventory-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading inventory...").classes("muted")
+
+    await ui.context.client.connected()
+    cookies = dict(app.storage.user.get("auth_cookies", {}))
+    inventory_id = await run.io_bound(fetch_inventory_id, cookies)
 
     if not inventory_id:
+        loading.delete()
         ui.label(
             "Could not load your inventory. "
             "Please sign in or check your backend connection."
         ).classes("text-red-600 p-6")
         return
 
+    items, categories = await asyncio.gather(
+        run.io_bound(fetch_inventory_items, inventory_id, cookies),
+        run.io_bound(fetch_inventory_categories, inventory_id, cookies),
+    )
+    loading.delete()
+
     state = {
-        "items": fetch_inventory_items(inventory_id),
-        "categories": fetch_inventory_categories(inventory_id),
+        "items": items,
+        "categories": categories,
     }
 
     def reload_inventory():

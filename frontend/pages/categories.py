@@ -1,8 +1,9 @@
 from datetime import datetime
 from urllib.parse import quote
 
+import asyncio
 import requests
-from nicegui import app, ui
+from nicegui import app, run, ui
 
 from backend_client import (
     BACKEND_URL,
@@ -222,10 +223,10 @@ def updated_days(value: str) -> int:
         return 0
 
 
-def fetch_inventory_id() -> str | None:
+def fetch_inventory_id(cookies: dict | None = None) -> str | None:
 
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/dashboard/",
             timeout=5,
         )
@@ -243,10 +244,11 @@ def fetch_inventory_id() -> str | None:
 
 def fetch_categories(
     inventory_id: str,
+    cookies: dict | None = None,
 ) -> list[dict]:
 
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             (f"{BACKEND_URL}/api/inventory/" f"{inventory_id}/categories/"),
             timeout=5,
         )
@@ -265,8 +267,6 @@ def fetch_categories(
 # PAGE
 @ui.page("/categories")
 async def categories_page():
-    await ui.context.client.connected()
-
     if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
         return
@@ -281,9 +281,19 @@ async def categories_page():
         ),
     )
 
-    inventory_id = fetch_inventory_id()
+    with ui.column().classes(
+        "categories-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading categories...").classes("muted")
+
+    await ui.context.client.connected()
+    cookies = dict(app.storage.user.get("auth_cookies", {}))
+    inventory_id = await run.io_bound(fetch_inventory_id, cookies)
 
     if not inventory_id:
+        loading.delete()
         with ui.column().classes(
             "page-content-frame " "items-center " "justify-center " "gap-3 p-8"
         ):
@@ -296,7 +306,10 @@ async def categories_page():
             ).classes("muted")
         return
 
-    state = {"categories": fetch_categories(inventory_id)}
+    categories = await run.io_bound(fetch_categories, inventory_id, cookies)
+    loading.delete()
+
+    state = {"categories": categories}
 
     editing_category = {"value": None}
 
