@@ -5,7 +5,12 @@ from .models import Item, Category
 
 class ItemForm(forms.ModelForm):
     """Form for creating and editing items"""
-    
+    quantity = forms.IntegerField(
+        min_value=1,
+        required=True,
+        widget=forms.NumberInput(attrs={'min': 1}),
+    )
+
     class Meta:
         model = Item
         fields = [
@@ -81,7 +86,7 @@ class ItemForm(forms.ModelForm):
 
     def clean_quantity(self):
         quantity = self.cleaned_data.get('quantity')
-        if quantity and quantity < 1:
+        if quantity is None and quantity < 1:
             raise ValidationError("Quantity must be at least 1.")
         return quantity
 
@@ -97,7 +102,7 @@ class ItemForm(forms.ModelForm):
             raise ValidationError("Manual value cannot be negative.")
             
         # If manual valuation is left blank, default it to the purchase amount
-        if not manual_value and purchase_amount is not None:
+        if manual_value is None and purchase_amount is not None:
             cleaned_data['manual_value'] = purchase_amount
             self.instance.manual_value = purchase_amount
         

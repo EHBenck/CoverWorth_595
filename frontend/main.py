@@ -1,5 +1,6 @@
 import os
 from nicegui import ui
+from utilities.attachments import register_attachment_routes
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 
@@ -8,6 +9,14 @@ from pages.dashboard import dashboard_page
 from pages.add_item import add_item_page
 from pages.edit_item import edit_item_page
 from pages.inventory import inventory_page
+from pages.valuations import valuations_page
+from pages.reports import reports_page
+from pages.categories import categories_page
+from pages.register import register_page
+from pages.settings import settings_page
+from pages.item_detail import item_detail_page
+
+register_attachment_routes()
 
 ui.run(
     host=os.getenv("NICEGUI_HOST", "127.0.0.1"),
