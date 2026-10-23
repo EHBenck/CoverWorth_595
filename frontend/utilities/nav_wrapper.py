@@ -106,7 +106,7 @@ def build_app_shell(
             ui.label("CoverWorth").classes("sidebar-logo")
 
         with ui.column().classes("w-full px-3 gap-2"):
-            _navigation_item("Dashboard", "home", "/", active_page == "Dashboard")
+            _navigation_item("Dashboard", "home", "/dashboard", active_page == "Dashboard")
             _navigation_item("Inventory", "inventory_2", "/inventory", active_page == "Inventory")
             _navigation_item("Categories", "folder", "/categories", active_page == "Categories")
             _navigation_item("Valuations", "analytics", "/valuations", active_page == "Valuations")

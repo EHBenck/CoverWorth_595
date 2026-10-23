@@ -75,6 +75,7 @@ def show_login_page(error_message=""):
 
                 app.storage.user["auth_cookies"] = session.cookies.get_dict()
                 app.storage.user["username"] = response.json()["username"]
+                print("[LOGIN] Saved cookies to storage:", app.storage.user.get("auth_cookies"))
                 ui.navigate.to("/dashboard")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
@@ -341,7 +342,6 @@ def recent_items_card(recent_items) -> None:
             )
 
         for index, item in enumerate(recent_items):
-
             with ui.row().classes(
                 "recent-item w-full items-center "
                 "justify-between py-3 px-2 rounded-lg"
@@ -351,14 +351,20 @@ def recent_items_card(recent_items) -> None:
                     "items-center gap-3"
                 ):
 
+                    # Image or Fallback Icon Container
                     with ui.element("div").classes(
                         "w-11 h-11 bg-slate-100 "
                         "rounded-lg flex items-center "
-                        "justify-center"
+                        "justify-center overflow-hidden"
                     ):
-                        ui.icon(item.get("icon", "inventory_2")).classes(
-                            "text-2xl text-slate-600"
-                        )
+                        item_image = item.get("image") or item.get("image_url")
+                        if item_image:
+                            img_src = item_image if item_image.startswith("http") else f"{BACKEND_URL}{item_image}"
+                            ui.image(img_src).classes("w-full h-full object-cover")
+                        else:
+                            ui.icon(item.get("icon", "inventory_2")).classes(
+                                "text-2xl text-slate-600"
+                            )
 
                     with ui.column().classes("gap-0"):
 
@@ -457,18 +463,16 @@ def attention_banner(dashboard_data) -> None:
 @ui.page("/")
 async def root_page():
     await ui.context.client.connected()
-    
-    # Always show the login page first when visiting root
+
     show_login_page()
 
 @ui.page("/dashboard")
 async def dashboard_page():
     await ui.context.client.connected()
-    
     cookies = app.storage.user.get("auth_cookies")
 
     if not cookies:
-        show_login_page()
+        ui.navigate.to("/")
         return
 
     api_data = await load_dashboard_data(cookies)

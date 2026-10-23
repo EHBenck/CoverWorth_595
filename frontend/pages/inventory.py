@@ -251,6 +251,7 @@ def fetch_inventory_items(inventory_id: str) -> list[dict]:
                     else "Review"
                 ),
                 "icon": item.get("icon") or "inventory_2",
+                "primary_photo_url": item.get("primary_photo_url"),
             })
 
         return normalized_items
@@ -282,7 +283,7 @@ async def inventory_page():
     await ui.context.client.connected()
 
     if not app.storage.user.get("auth_cookies"):
-        ui.navigate.to("/")
+        ui.navigate.to("/dashboard")
         return
 
     ui.page_title(
@@ -309,6 +310,8 @@ async def inventory_page():
         state["items"] = fetch_inventory_items(inventory_id)
         state["categories"] = fetch_inventory_categories(inventory_id)
         inventory_rows.refresh()
+
+    ui.timer(0.1, reload_inventory, once=True)
 
     async def confirm_and_delete_item(item_public_id: str, item_name: str):
         def execute_delete(item_public_id: str, item_name: str):
@@ -555,8 +558,13 @@ async def inventory_page():
                     ui.label("Actions")
 
                 def render_inventory_row(item):
-                    with ui.element("div").classes("item-icon"):
-                        ui.icon(item["icon"]).classes("text-2xl text-slate-600")
+                    with ui.element("div").classes("item-icon overflow-hidden"):
+                        photo_url = item.get("primary_photo_url")
+                        if photo_url:
+                            full_url = f"{BACKEND_URL}{photo_url}" if photo_url.startswith("/") else photo_url
+                            ui.image(full_url).classes("w-full h-full object-cover")
+                        else:
+                            ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 
                     ui.label(item["name"]).classes("text-sm font-semibold")
                     ui.label(item["category"]).classes("text-sm text-slate-700")
