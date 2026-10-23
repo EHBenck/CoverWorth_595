@@ -25,3 +25,4 @@ backend/db.sqlite3
 .env
 .venv/
 __pycache__/
+backend/media/item_attachments/
