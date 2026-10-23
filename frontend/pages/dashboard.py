@@ -364,7 +364,7 @@ def recent_items_card(recent_items) -> None:
 
                         ui.link(
                             item["name"],
-                            f"/edit-item/{item['public_id']}"
+                            f"/item/{item['public_id']}"
                         ).classes(
                             "text-sm font-semibold"
                         )

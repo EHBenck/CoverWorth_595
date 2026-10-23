@@ -1,7 +1,7 @@
 from nicegui import app, ui
 from utilities.nav_wrapper import build_app_shell
 
-#SETTINGS PAGE
+# SETTINGS PAGE
 # -----------------------------------------------------------
 # TODO:
 #   - User profile endpoint
@@ -227,9 +227,6 @@ ui.add_css(
 # ============================================================
 @ui.page("/settings")
 async def settings_page():
-
-    await ui.context.client.connected()
-
     # AUTHENTICATION GUARD
     # ========================================================
     if not app.storage.user.get("auth_cookies"):
@@ -247,6 +244,15 @@ async def settings_page():
             "User",
         ),
     )
+
+    with ui.column().classes(
+        "settings-container page-content-frame " "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading settings...").classes("muted")
+
+    await ui.context.client.connected()
+    loading.delete()
 
     username = app.storage.user.get(
         "username",
