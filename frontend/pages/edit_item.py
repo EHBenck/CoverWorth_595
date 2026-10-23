@@ -414,7 +414,7 @@ async def edit_item_page(item_id: str):
                                         if att.get("file_url"):
                                             ui.button(icon="visibility", on_click=lambda url=att["file_url"]: ui.open(url, new_tab=True)).props("flat round dense size=sm")
                                         
-                                        def delete_att(aid=att["public_id"]):
+                                        async def delete_att(aid=att["public_id"]):
                                             try:
                                                 session = authenticated_session()
                                                 response = session.delete(
@@ -424,7 +424,7 @@ async def edit_item_page(item_id: str):
                                                 )
                                                 if response.ok:
                                                     ui.notify("Attachment deleted.", type="positive")
-                                                    refresh_attachments()
+                                                    await refresh_attachments()
                                                 else:
                                                     ui.notify("Failed to delete attachment.", type="negative")
                                             except requests.RequestException:
@@ -442,12 +442,12 @@ async def edit_item_page(item_id: str):
                     async def handle_file_upload(e):
                         try:
                             session = authenticated_session()
-                            # Await the file contents since read() is asynchronous
-                            file_bytes = await e.file.read()
-                            files = {"file": (e.file.name, file_bytes, e.file.content_type)}
+                            # NiceGUI 2.x upload event: content / name / type
+                            file_bytes = e.content.read()
+                            files = {"file": (e.name, file_bytes, e.type)}
                             data = {
-                                "file_type": "receipt" 
-                                if "pdf" in e.file.content_type or "receipt" in e.file.name.lower() 
+                                "file_type": "receipt"
+                                if "pdf" in e.type or "receipt" in e.name.lower()
                                 else "photo"
                             }
                             

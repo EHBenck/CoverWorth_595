@@ -1,12 +1,11 @@
 """
 Sprint 3 integration pass, driven through the real NiceGUI pages.
+Kept as the regression suite for Sprint 4 (see test_sprint4_workflow.py).
 
 Login -> Dashboard -> Inventory -> Add Item -> View/Edit Item
 
-Every test talks to a live Django server (see conftest.py). Item deletion
-and the live Inventory/Valuations tables are not implemented yet (those
-pages still render mock data), so they are only checked for access control
-and rendering, not for item data.
+Every test talks to a live Django server (see conftest.py). "/" is the login
+page; the dashboard lives at "/dashboard".
 """
 
 import uuid
@@ -16,46 +15,21 @@ from nicegui import app, ui
 from nicegui.testing import User
 
 from tests import app_under_test
+from tests.ui_helpers import make_backend_unreachable, open_login, set_value, sign_in
 
 pytestmark = pytest.mark.module_under_test(app_under_test)
 
 PROTECTED_PATHS = [
+    "/dashboard",
     "/inventory",
     "/categories",
     "/valuations",
     "/reports",
+    "/settings",
     f"/add-item/{uuid.uuid4()}",
     f"/edit-item/{uuid.uuid4()}",
+    f"/item/{uuid.uuid4()}",
 ]
-
-UNREACHABLE_BACKEND = "http://127.0.0.1:9"
-
-
-# ------------------------------------------------------------
-# HELPERS
-# ------------------------------------------------------------
-
-async def sign_in(user: User, account: dict) -> None:
-    await user.open("/")
-    await user.should_see("Sign in to your account")
-    user.find("Username").type(account["username"])
-    user.find("Password").type(account["password"])
-    user.find("Sign in").click()
-    await user.should_see("Recent Items", retries=20)
-
-
-def set_value(user: User, label: str, value) -> None:
-    with user:
-        for element in user.find(label).elements:
-            element.value = value
-
-
-def make_backend_unreachable(monkeypatch) -> None:
-    from pages import add_item, categories, dashboard, edit_item, register, reports
-    import backend_client
-
-    for module in (backend_client, dashboard, register, add_item, edit_item, categories, reports):
-        monkeypatch.setattr(module, "BACKEND_URL", UNREACHABLE_BACKEND)
 
 
 # ------------------------------------------------------------
@@ -65,7 +39,7 @@ def make_backend_unreachable(monkeypatch) -> None:
 async def test_register_from_login_page_lands_on_empty_dashboard(user: User, api) -> None:
     username = f"new_{uuid.uuid4().hex[:8]}"
 
-    await user.open("/")
+    await open_login(user)
     user.find("Register").click()
     await user.should_see("Create your account", retries=20)
 
@@ -107,8 +81,32 @@ async def test_register_rejects_mismatched_passwords_before_calling_backend(user
     await user.should_see("Passwords do not match.")
 
 
+async def test_register_shows_password_requirements_while_typing(user: User) -> None:
+    await user.open("/register")
+    await user.should_see("Your password must be:")
+    for rule in (
+        "At least 8 characters",
+        "Not only numbers",
+        "Not too similar to your name, username, or email",
+        "Not a commonly used password",
+    ):
+        await user.should_see(rule)
+
+    def passed_rules() -> int:
+        with user:
+            return sum(icon.name == "check_circle" for icon in user.find(kind=ui.icon).elements)
+
+    assert passed_rules() == 0
+
+    user.find("Password").type("12345678")
+    assert passed_rules() == 1
+
+    user.find("Password").clear().type("Sturdy-passphrase-42")
+    assert passed_rules() == 2
+
+
 async def test_login_with_wrong_password_shows_error(user: User, account) -> None:
-    await user.open("/")
+    await open_login(user)
     user.find("Username").type(account["username"])
     user.find("Password").type("wrong-password")
     user.find("Sign in").click()
@@ -144,11 +142,12 @@ async def test_signed_in_user_can_open_every_page(user: User, account, api) -> N
     await sign_in(user, account)
 
     pages = {
-        "/": "Recent Items",
+        "/dashboard": "Recent Items",
         "/inventory": "Inventory",
         "/categories": "Electronics",
         "/valuations": "Valuations",
         "/reports": "Reports",
+        "/settings": "Settings",
         f"/add-item/{inventory_id}": "Add a new belonging to My Inventory",
     }
     for path, expected in pages.items():
@@ -163,7 +162,7 @@ async def test_refreshing_pages_keeps_the_session(user: User, account, api) -> N
     await sign_in(user, account)
 
     for _ in range(2):
-        await user.open("/")
+        await user.open("/dashboard")
         await user.should_see("Recent Items", retries=20)
         await user.open(f"/add-item/{inventory_id}")
         await user.should_see("Add a new belonging to My Inventory", retries=20)
@@ -216,7 +215,7 @@ async def test_invalid_item_shows_errors_and_is_not_saved(user: User, account, a
     set_value(user, "Date Acquired *", "")
     user.find(kind=ui.button, content="Add Item").click()
 
-    await user.should_see("Please correct the highlighted fields.", retries=20)
+    await user.should_see("Couldn't add the item. Check the highlighted fields.", retries=20)
     await user.should_see("This field is required.")
     await user.should_not_see("Item added successfully.")
     assert api.get("/api/items/").json()["items"] == []
@@ -239,14 +238,18 @@ async def test_dashboard_lists_item_and_opens_it(user: User, account, api) -> No
     await user.should_see("$1,200")
     user.find(kind=ui.link, content="Laptop").click()
 
-    await user.should_see("Edit Laptop", retries=20)
+    await user.should_see("Item Information", retries=20)
+    await user.should_see("Electronics")
+    user.find(kind=ui.button, content="Edit Item").click()
+
+    await user.should_see("Update the details for Laptop.", retries=20)
     with user:
         assert user.find("Item Name *").elements.pop().value == "Laptop"
-        assert user.find("Category *").elements.pop().value == category_id
+        assert user.find("Category *").elements.pop().value == str(category_id)
 
     user.find("Item Name *").clear().type("Laptop Pro")
     user.find("Save Changes").click()
-    await user.should_see("Item 'Laptop Pro' updated successfully!", retries=20)
+    await user.should_see("Item updated successfully.", retries=20)
     assert api.get(f"/api/item/{item_id}/").json()["item"]["name"] == "Laptop Pro"
 
 
@@ -293,7 +296,7 @@ async def test_items_persist_for_a_new_browser_session(create_user, account, api
 async def test_login_and_register_report_unreachable_backend(user: User, account, monkeypatch) -> None:
     make_backend_unreachable(monkeypatch)
 
-    await user.open("/")
+    await open_login(user)
     user.find("Username").type(account["username"])
     user.find("Password").type(account["password"])
     user.find("Sign in").click()
@@ -313,11 +316,20 @@ async def test_pages_still_render_when_backend_goes_down(user: User, account, ap
 
     make_backend_unreachable(monkeypatch)
 
-    await user.open("/")
+    await user.open("/dashboard")
     await user.should_see("Recent Items", retries=50)
 
     await user.open(f"/edit-item/{uuid.uuid4()}")
     await user.should_see("Item not found", retries=50)
+
+    await user.open(f"/item/{uuid.uuid4()}")
+    await user.should_see("Item not found", retries=50)
+
+    await user.open("/inventory")
+    await user.should_see("Could not load your inventory.", retries=50)
+
+    await user.open("/valuations")
+    await user.should_see("Could not load inventory", retries=50)
 
     await user.open("/categories")
     await user.should_see("Categories", retries=50)
@@ -341,5 +353,6 @@ async def test_expired_backend_session_sends_user_back_to_login(user: User, acco
     api.session.cookies.set("sessionid", stored["auth_cookies"]["sessionid"])
     assert api.post("/api/auth/logout/").ok
 
-    await user.open("/")
+    await user.open("/dashboard")
     await user.should_see("Your session expired. Please sign in again.", retries=20)
+    await user.should_see("Sign in to your account")

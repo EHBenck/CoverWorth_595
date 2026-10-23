@@ -16,8 +16,10 @@ from pages import (
     dashboard,
     edit_item,
     inventory,
+    item_detail,
     register,
     reports,
+    settings,
     valuations,
 )
 
@@ -29,10 +31,12 @@ PAGE_MODULES = [
     add_item,
     edit_item,
     inventory,
+    item_detail,
     valuations,
     reports,
     categories,
     register,
+    settings,
 ]
 
 for module in PAGE_MODULES:
