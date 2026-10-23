@@ -1,6 +1,7 @@
 import os
 import requests
 from nicegui import app, run, ui
+from utilities.attachments import attachment_url
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 
@@ -355,10 +356,9 @@ def recent_items_card(recent_items) -> None:
                         "rounded-lg flex items-center "
                         "justify-center overflow-hidden"
                     ):
-                        item_image = item.get("image") or item.get("image_url")
+                        item_image = attachment_url(item.get("image") or item.get("image_url"))
                         if item_image:
-                            img_src = item_image if item_image.startswith("http") else f"{BACKEND_URL}{item_image}"
-                            ui.image(img_src).classes("w-full h-full object-cover")
+                            ui.image(item_image).classes("w-full h-full object-cover")
                         else:
                             ui.icon(item.get("icon", "inventory_2")).classes(
                                 "text-2xl text-slate-600"

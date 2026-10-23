@@ -6,6 +6,7 @@ from nicegui import app, ui
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
+from utilities.attachments import attachment_url
 
 
 ui.add_css(
@@ -291,12 +292,14 @@ async def edit_item_page(item_id: str):
 
                     quantity_input = ui.number(
                         label="Quantity",
-                        value=item.get("quantity") or 1,
+                        value=item.get("quantity") if item.get("quantity") is not None else 1,
                         min=1,
                         step=1,
                     ).props("outlined min=1").classes(
                         "form-control w-full max-w-[220px]"
                     )
+                    quantity_error = ui.label().classes("field-error")
+                    quantity_error.visible = False
 
                 # Purchase and Value
                 with ui.card().classes("form-card w-full p-6 gap-5"):
@@ -411,8 +414,9 @@ async def edit_item_page(item_id: str):
                                         ui.label(att["original_filename"] or "Attachment").classes("text-sm font-medium truncate max-w-[160px]")
                                     
                                     with ui.row().classes("items-center gap-1"):
-                                        if att.get("file_url"):
-                                            ui.button(icon="visibility", on_click=lambda url=att["file_url"]: ui.open(url, new_tab=True)).props("flat round dense size=sm")
+                                        file_url = attachment_url(att.get("file_url") or "")
+                                        if file_url:
+                                            ui.button(icon="visibility", on_click=lambda url=file_url: ui.navigate.to(url, new_tab=True)).props("flat round dense size=sm")
                                         
                                         async def delete_att(aid=att["public_id"]):
                                             try:
@@ -510,11 +514,12 @@ async def edit_item_page(item_id: str):
                 category_error,
                 date_error,
                 amount_error,
+                quantity_error,
             ]:
                 label.visible = False
 
             # Clear previous field error styling.
-            for field in [purchase_date_input, purchase_amount_input]:
+            for field in [purchase_date_input, purchase_amount_input, quantity_input]:
                 field.props(remove="error")
 
             name = (name_input.value or "").strip()
@@ -556,6 +561,15 @@ async def edit_item_page(item_id: str):
                 amount_error.visible = True
                 purchase_amount_input.props("error")
 
+            try:
+                quantity = float(quantity_input.value)
+                if quantity < 1 or not quantity.is_integer():
+                    raise ValueError
+            except (TypeError, ValueError):
+                quantity_error.text = "Quantity must be a whole number of at least 1."
+                quantity_error.visible = True
+                quantity_input.props("error")
+
             if any(
                 label.visible
                 for label in [
@@ -563,6 +577,7 @@ async def edit_item_page(item_id: str):
                     category_error,
                     date_error,
                     amount_error,
+                    quantity_error,
                 ]
             ):
                 error_label.text = "Please correct the highlighted fields."
@@ -592,7 +607,7 @@ async def edit_item_page(item_id: str):
                 "model_number": model_input.value or "",
                 "serial_number": serial_input.value or "",
                 "condition": condition_select.value or "unknown",
-                "quantity": quantity_input.value or 1,
+                "quantity": int(quantity),
                 "manual_value": (
                     manual_value if manual_value is not None else ""
                 ),
@@ -629,6 +644,7 @@ async def edit_item_page(item_id: str):
                     "category": category_error,
                     "purchase_date": date_error,
                     "purchase_amount": amount_error,
+                    "quantity": quantity_error,
                 }
 
                 for field, label in field_labels.items():
@@ -643,6 +659,8 @@ async def edit_item_page(item_id: str):
                             purchase_date_input.props("error")
                         elif field == "purchase_amount":
                             purchase_amount_input.props("error")
+                        elif field == "quantity":
+                            quantity_input.props("error")
 
                 error_label.text = response_data.get(
                     "error",

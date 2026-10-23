@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 import asyncio
@@ -204,23 +204,12 @@ def updated_label(value: str) -> str:
         return "Recently updated"
 
 
-def updated_days(value: str) -> int:
+def updated_at_key(value: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-        now = datetime.now(parsed.tzinfo)
-
-        return max(
-            0,
-            (now - parsed).days,
-        )
-
-    except (
-        ValueError,
-        TypeError,
-        AttributeError,
-    ):
-        return 0
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError, AttributeError):
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
 def fetch_inventory_id(cookies: dict | None = None) -> str | None:
@@ -665,7 +654,7 @@ async def categories_page():
                     )
 
                 else:
-                    categories.sort(key=lambda item: updated_days(item["updated_at"]))
+                    categories.sort(key=lambda item: updated_at_key(item.get("updated_at")), reverse=True)
 
                 if not categories:
                     with ui.column().classes(

@@ -394,6 +394,8 @@ async def add_item_page(
                         .props("outlined")
                         .classes("form-control " "w-full " "max-w-[220px]")
                     )
+                    quantity_error = ui.label().classes("field-error")
+                    quantity_error.visible = False
 
                 # PURCHASE AND VALUE
                 # =============================================
@@ -594,10 +596,23 @@ async def add_item_page(
                 category_error,
                 date_error,
                 amount_error,
+                quantity_error,
             ]:
                 label.visible = False
+            quantity_input.props(remove="error")
 
             name = (name_input.value or "").strip()
+            try:
+                quantity = float(quantity_input.value)
+                if quantity < 1 or not quantity.is_integer():
+                    raise ValueError
+            except (TypeError, ValueError):
+                quantity_error.text = "Quantity must be a whole number of at least 1."
+                quantity_error.visible = True
+                quantity_input.props("error")
+                error_label.text = "Please correct the highlighted fields."
+                error_label.visible = True
+                return
 
             form_data = {
                 "name": name,
@@ -613,7 +628,7 @@ async def add_item_page(
                 "model_number": (model_input.value or ""),
                 "serial_number": (serial_input.value or ""),
                 "condition": (condition_select.value),
-                "quantity": (quantity_input.value or 1),
+                "quantity": int(quantity),
                 "manual_value": (
                     manual_value_input.value
                     if (manual_value_input.value is not None)
@@ -648,6 +663,7 @@ async def add_item_page(
                     "category": category_error,
                     "purchase_date": date_error,
                     "purchase_amount": amount_error,
+                    "quantity": quantity_error,
                 }.items():
                     if field in server_errors:
                         label.text = str(server_errors[field])
