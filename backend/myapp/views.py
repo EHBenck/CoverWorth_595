@@ -717,56 +717,100 @@ def inventory_detail_api(request, inventory_id):
 
 @require_http_methods(["GET"])
 def item_detail_api(request, item_id):
-    """API endpoint for getting a single item's details"""
+    """API endpoint for getting a single item's details."""
+
     if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required."}, status=401)
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
 
     try:
-        item = get_object_or_404(Item, public_id=item_id)
+        item = get_object_or_404(
+            Item.objects.select_related(
+                "inventory",
+                "category",
+                "location",
+            ),
+            public_id=item_id,
+            inventory__owner=request.user,
+            archived_at__isnull=True,
+        )
 
-        current_user = request.user
-        if item.inventory.owner != current_user:
-            return JsonResponse(
-                {'success': False, 'error': 'You don\'t have access to this item.'},
-                status=403
-            )
-
-        return JsonResponse({
-            'success': True,
-            'item': {
-                'public_id': str(item.public_id),
-                'name': item.name,
-                'category': item.category.name if item.category else 'Uncategorized',
-                'description': item.description,
-                'brand': item.brand,
-                'model_number': item.model_number,
-                'serial_number': item.serial_number,
-                'condition': item.get_condition_display(),
-                'quantity': item.quantity,
-                'purchase_date': item.purchase_date.isoformat() if item.purchase_date else None,
-                'purchase_amount': str(item.purchase_amount) if item.purchase_amount else None,
-                'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
-                'manual_value': str(item.manual_value) if item.manual_value else None,
-                'notes': item.notes,
-                'created_at': item.created_at.isoformat(),
-                'updated_at': item.updated_at.isoformat(),
-            },
-            'inventory': {
-                'public_id': str(item.inventory.public_id),
-                'name': item.inventory.name,
-            },
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "item": {
+                    "public_id": str(item.public_id),
+                    "name": item.name,
+                    "category": (
+                        item.category.name
+                        if item.category
+                        else "Uncategorized"
+                    ),
+                    "location": (
+                        item.location.name
+                        if item.location
+                        else None
+                    ),
+                    "description": item.description,
+                    "brand": item.brand,
+                    "model_number": item.model_number,
+                    "serial_number": item.serial_number,
+                    "condition": item.get_condition_display(),
+                    "condition_code": item.condition,
+                    "quantity": item.quantity,
+                    "purchase_date": (
+                        item.purchase_date.isoformat()
+                        if item.purchase_date
+                        else None
+                    ),
+                    "purchase_amount": (
+                        str(item.purchase_amount)
+                        if item.purchase_amount is not None
+                        else None
+                    ),
+                    "current_estimated_amount": (
+                        str(item.current_estimated_amount)
+                        if item.current_estimated_amount is not None
+                        else None
+                    ),
+                    "manual_value": (
+                        str(item.manual_value)
+                        if item.manual_value is not None
+                        else None
+                    ),
+                    "effective_value": (
+                        str(item.effective_value)
+                        if item.effective_value is not None
+                        else None
+                    ),
+                    "valuation_date": (
+                        item.valuation_date.isoformat()
+                        if item.valuation_date
+                        else None
+                    ),
+                    "notes": item.notes,
+                    "created_at": item.created_at.isoformat(),
+                    "updated_at": item.updated_at.isoformat(),
+                },
+                "inventory": {
+                    "public_id": str(
+                        item.inventory.public_id
+                    ),
+                    "name": item.inventory.name,
+                },
+            }
+        )
 
     except Http404:
-        return JsonResponse({
-            'success': False,
-            'error': 'Not found.',
-        }, status=404)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'error': str(e),
-        }, status=500)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Item not found.",
+            },
+            status=404,
+        )
 
 @require_http_methods(["GET", "POST"])
 def item_attachments_api(request, item_id):

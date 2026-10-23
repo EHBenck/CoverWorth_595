@@ -12,6 +12,8 @@ from pages.valuations import valuations_page
 from pages.reports import reports_page
 from pages.categories import categories_page
 from pages.register import register_page
+from pages.settings import settings_page
+from pages.item_detail import item_detail_page
 
 ui.run(
     host=os.getenv("NICEGUI_HOST", "127.0.0.1"),

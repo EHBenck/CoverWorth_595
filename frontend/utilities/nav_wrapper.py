@@ -112,7 +112,7 @@ def build_app_shell(
             _navigation_item("Valuations", "analytics", "/valuations", active_page == "Valuations")
             _navigation_item("Reports", "description", "/reports", active_page == "Reports")
             ui.separator().classes("my-3 opacity-20")
-            _navigation_item("Settings", "settings", active=active_page == "Settings")
+            _navigation_item("Settings", "settings", "/settings", active_page == "Settings")
 
     with ui.header().classes("top-header h-[68px] items-center px-5"):
         ui.button(icon="menu", on_click=drawer.toggle).props("flat round color=grey-8")
