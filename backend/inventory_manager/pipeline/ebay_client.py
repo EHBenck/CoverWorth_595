@@ -20,6 +20,8 @@ def parse_listings(data):
                 title=s["title"],
                 price=Decimal(price["value"]),
                 condition=CONDITION_MAP.get(s.get("conditionId")),
+                listing_id=s.get("itemId", ""),
+                url=s.get("itemWebUrl", "")
             )
         )
     return rows

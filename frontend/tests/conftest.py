@@ -4,6 +4,9 @@ A real Django server is started once per test session against a freshly
 migrated, throwaway SQLite database (the development db.sqlite3 is never
 touched). The NiceGUI pages are driven with NiceGUI's simulated `user`
 fixture and talk to that server over HTTP, exactly like in production.
+
+Uploaded attachments go to a temporary media folder, and the server's eBay
+calls are answered by tests/fake_ebay.py instead of the real API.
 """
 
 import os
@@ -26,7 +29,8 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
+TESTS_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = TESTS_DIR.parents[1] / "backend"
 BACKEND_PORT = _free_port()
 
 # Must be set before any frontend/NiceGUI module reads them at import time.
@@ -53,6 +57,10 @@ def backend_server(tmp_path_factory):
                     "NAME": {str(work_dir / "db.sqlite3")!r},
                 }}
             }}
+            MEDIA_ROOT = {str(work_dir / "media")!r}
+
+            import fake_ebay
+            fake_ebay.install()
             """
         )
     )
@@ -60,7 +68,7 @@ def backend_server(tmp_path_factory):
     env = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "integration_settings",
-        "PYTHONPATH": os.pathsep.join([str(work_dir), str(BACKEND_DIR)]),
+        "PYTHONPATH": os.pathsep.join([str(work_dir), str(BACKEND_DIR), str(TESTS_DIR)]),
         "PYTHONIOENCODING": "utf-8",
     }
     log_file = open(work_dir / "server.log", "w", encoding="utf-8")
@@ -149,6 +157,39 @@ class BackendApi:
         response = self.post(f"/api/inventory/{self.inventory_id()}/add-item/", data=fields)
         assert response.status_code == 200, response.text
         return response.json()["item_id"]
+
+    def category_id(self, index: int = 0) -> int:
+        """The integer id the Add Item form submits for a category."""
+        return self.get(f"/api/inventory/{self.inventory_id()}/add-item/").json()["categories"][index]["id"]
+
+    def add_phone(self, name: str = "iPhone 13", **fields) -> str:
+        """An item the fake eBay has comparable listings for."""
+        return self.add_item(**{
+            "name": name,
+            "brand": "Apple",
+            "model_number": "128GB",
+            "category": self.category_id(),
+            "purchase_date": "2025-09-01",
+            "purchase_amount": "799.00",
+            "condition": "used",
+            "quantity": "1",
+            **fields,
+        })
+
+    def item(self, item_id: str) -> requests.Response:
+        return self.get(f"/api/item/{item_id}/")
+
+    def attachments(self, item_id: str) -> list[dict]:
+        return self.get(f"/api/item/{item_id}/attachments/").json()["attachments"]
+
+    def upload(self, item_id: str, filename: str, content: bytes, content_type: str, file_type: str = "photo"):
+        response = self.post(
+            f"/api/item/{item_id}/attachments/",
+            data={"file_type": file_type},
+            files={"file": (filename, content, content_type)},
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["attachment"]
 
 
 @pytest.fixture

@@ -519,13 +519,14 @@ async def add_item_page(
 
                         ui.label(("PNG or JPG image")).classes("text-xs muted")
 
-                    async def photo_selected(e):
+                    def photo_selected(e):
+                        # NiceGUI 2.x upload event: content / name / type
                         nonlocal uploaded_file, uploaded_filename, uploaded_content_type
-                        uploaded_file = await e.file.read()
-                        uploaded_filename = e.file.name
-                        uploaded_content_type = e.file.content_type
+                        uploaded_file = e.content.read()
+                        uploaded_filename = e.name
+                        uploaded_content_type = e.type
                         ui.notify(
-                            f"Photo '{e.file.name}' selected. It will upload when you add the item.",
+                            f"Photo '{e.name}' selected. It will upload when you add the item.",
                             type="positive",
                         )
 

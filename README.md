@@ -69,12 +69,24 @@ Do not commit `backend/.venv/`.
 Backend unit and API workflow tests (each test uses a fresh test database):
 
 	cd backend
-	.\.venv\Scripts\python.exe manage.py test myapp
+	.\.venv\Scripts\python.exe manage.py test
+
+The tests never call eBay: valuation tests replace eBay's HTTP calls with the
+recorded listings in `backend/inventory_manager/fixtures/raw`, so no eBay
+credentials are needed. One test is an expected failure that tracks a known
+bug: an accepted valuation does not become the item's displayed value.
 
 Frontend <-> backend integration tests. These start their own Django server
 on a temporary, freshly migrated database and drive the NiceGUI pages
 through NiceGUI's simulated user, so no servers need to be running and
-`db.sqlite3` is not touched:
+`db.sqlite3` is not touched. That server answers eBay calls from
+`frontend/tests/fake_ebay.py` and stores uploads in a temporary folder:
 
 	cd frontend
 	..\backend\.venv\Scripts\python.exe -m pytest
+
+To check the real eBay connection by hand (needs `EBAY_CLIENT_ID` and
+`EBAY_CLIENT_SECRET` in `backend/.env`):
+
+	cd backend
+	.\.venv\Scripts\python.exe -m inventory_manager.pipeline.test_live
