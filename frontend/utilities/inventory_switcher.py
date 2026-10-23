@@ -8,7 +8,8 @@ current page so the other screens request data for the newly active one.
 import asyncio
 
 import requests
-from nicegui import app, ui
+from nicegui import app, run, ui
+from nicegui.element import Element
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 
@@ -53,27 +54,59 @@ def _post_inventory(cookies: dict, endpoint: str, payload: dict) -> tuple[dict, 
     return response.json(), session.cookies.get_dict()
 
 
-def show_inventory_switcher(active_page: str) -> None:
-    """Render a dropdown and create button in the global header."""
-    cookies = dict(app.storage.user.get("auth_cookies", {}))
-    if not cookies:
-        return
-
-    try:
-        response = authenticated_session(cookies).get(
-            f"{BACKEND_URL}/api/inventories/", timeout=5,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except (requests.RequestException, ValueError):
-        ui.label("Inventories unavailable").classes("text-sm text-negative")
-        return
-
+def _fetch_inventories(cookies: dict) -> tuple[dict[str, str], str | None]:
+    response = authenticated_session(cookies).get(
+        f"{BACKEND_URL}/api/inventories/", timeout=5,
+    )
+    response.raise_for_status()
+    result = response.json()
     options = {
         inventory["public_id"]: inventory["name"]
         for inventory in result.get("inventories", [])
     }
     active_id = result.get("active_inventory_id")
+    return options, active_id
+
+
+def show_inventory_switcher(active_page: str) -> None:
+    """Render the inventory selector without blocking the shared page shell."""
+    cookies = dict(app.storage.user.get("auth_cookies", {}))
+    if not cookies:
+        return
+
+    with ui.row().classes("items-center") as switcher_container:
+        loading_label = ui.label("Loading inventories...").classes(
+            "text-sm text-grey-7"
+        )
+
+    async def load_switcher() -> None:
+        try:
+            options, active_id = await run.io_bound(_fetch_inventories, cookies)
+        except (requests.RequestException, ValueError) as error:
+            loading_label.text = "Inventories unavailable"
+            loading_label.classes("text-negative")
+            loading_label.tooltip(str(error))
+            return
+
+        loading_label.delete()
+        _render_inventory_switcher(
+            active_page,
+            cookies,
+            options,
+            active_id,
+            switcher_container,
+        )
+
+    ui.timer(0.1, load_switcher, once=True)
+
+
+def _render_inventory_switcher(
+    active_page: str,
+    cookies: dict,
+    options: dict[str, str],
+    active_id: str | None,
+    container: Element,
+) -> None:
     state = {"active_id": active_id, "busy": False}
 
     def refresh_after_switch() -> None:
@@ -154,13 +187,14 @@ def show_inventory_switcher(active_page: str) -> None:
                     "unelevated color=primary no-caps"
                 )
 
-    with ui.row().classes("items-center gap-1"):
-        dropdown = ui.select(
-            options=options,
-            value=active_id,
-            label="Inventory",
-            on_change=select_inventory,
-        ).props("outlined dense options-dense").classes("w-44 max-w-[28vw]")
-        ui.button("New", icon="add", on_click=create_dialog.open).props(
-            "flat dense no-caps color=primary"
-        ).tooltip("Create inventory")
+    with container:
+        with ui.row().classes("items-center gap-1"):
+            dropdown = ui.select(
+                options=options,
+                value=active_id,
+                label="Inventory",
+                on_change=select_inventory,
+            ).props("outlined dense options-dense").classes("w-44 max-w-[28vw]")
+            ui.button("New", icon="add", on_click=create_dialog.open).props(
+                "flat dense no-caps color=primary"
+            ).tooltip("Create inventory")

@@ -1,7 +1,7 @@
 import os
 from django.template import response
 import requests
-from nicegui import app, ui
+from nicegui import app, run, ui
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 
@@ -12,7 +12,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # DATA FETCHING FROM BACKEND
 # ------------------------------------------------------------------
 
-async def load_dashboard_data(cookies):
+def load_dashboard_data(cookies):
     """Fetch dashboard summary using this browser's Django session."""
     try:
         response = authenticated_session(cookies).get(
@@ -456,26 +456,11 @@ def attention_banner(dashboard_data) -> None:
 # ------------------------------------------------------------------
 @ui.page("/")
 async def dashboard_page():
-    await ui.context.client.connected()
-    
     cookies = app.storage.user.get("auth_cookies")
 
     if not cookies:
         show_login_page()
         return
-
-    api_data = await load_dashboard_data(cookies)
-
-    if api_data is None:
-        app.storage.user.pop("auth_cookies", None)
-        app.storage.user.pop("username", None)
-        show_login_page("Your session expired. Please sign in again.")
-        return
-
-    dashboard_data = api_data["summary"]
-    category_data = api_data["category_data"]
-    recent_items = api_data["recent_items"]
-    inventory_id = api_data.get("inventory_id")
 
     build_app_shell(
         "Dashboard",
@@ -483,6 +468,28 @@ async def dashboard_page():
         on_sign_out=sign_out,
     )
 
+    with ui.column().classes(
+        "dashboard-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading dashboard...").classes("muted")
+
+    await ui.context.client.connected()
+    api_data = await run.io_bound(load_dashboard_data, cookies)
+
+    if api_data is None:
+        app.storage.user.pop("auth_cookies", None)
+        app.storage.user.pop("username", None)
+        ui.navigate.reload()
+        return
+
+    loading.delete()
+
+    dashboard_data = api_data["summary"]
+    category_data = api_data["category_data"]
+    recent_items = api_data["recent_items"]
+    inventory_id = api_data.get("inventory_id")
 
     # --------------------------------------------------------------
     # MAIN DASHBOARD CONTENT
@@ -575,6 +582,4 @@ async def dashboard_page():
         # ----------------------------------------------------------
 
         attention_banner(dashboard_data)
-
-
 
