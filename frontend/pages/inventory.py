@@ -549,7 +549,12 @@ async def inventory_page():
                     with ui.element("div").classes("item-icon"):
                         ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 
-                    ui.label(item["name"]).classes("text-sm font-semibold")
+                    ui.link(item["name"],f'/item/{item["public_id"]}',).classes(
+                        "text-sm "
+                        "font-semibold "
+                        "text-slate-900 "
+                        "no-underline"
+                    )
                     ui.label(item["category"]).classes("text-sm text-slate-700")
                     ui.label(f'${item["estimated_value"]:,.0f}').classes(
                         "text-sm font-medium"
@@ -566,14 +571,16 @@ async def inventory_page():
                         with ui.menu():
                             ui.menu_item(
                                 "View Item",
-                                on_click=lambda item=item: ui.notify(
-                                    f'View {item["name"]}'
-                                ),
+                                on_click=lambda item=item:
+                                    ui.navigate.to(
+                                    f'/item/{item["public_id"]}'
+                                    )
                             )
                             ui.menu_item(
                                 "Edit",
-                                on_click=lambda item=item: ui.notify(
-                                    f'Edit {item["name"]}'
+                                on_click=lambda item=item:
+                                ui.navigate.to(
+                                    f'/edit-item/{item["public_id"]}'
                                 ),
                             )
                             ui.separator()
