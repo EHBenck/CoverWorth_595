@@ -7,8 +7,8 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db import IntegrityError, transaction, OperationalError, connection
+from django.db.models import Count, Q, F
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -141,7 +141,32 @@ def auth_logout(request):
 
 ACTIVE_INVENTORY_KEY = "active_inventory_id"
 
+def _lock_inventory_owner(user):
+    """Serialize inventory changes for one owner inside transaction.atomic()."""
+    User = get_user_model()
+    owners = User.objects.filter(pk=user.pk)
+    if connection.vendor == "sqlite":
+        # SELECT FOR UPDATE has no effect on SQLite. This no-op write takes
+        # its writer lock BEFORE reading how many usable inventories remain.
+        # No user data changes; a second archive must wait or safely retry.
+        pk_field = User._meta.pk.attname
+        owners.update(**{pk_field: F(pk_field)})
+    else:
+        owners.select_for_update().get()
 
+
+def _inventory_busy_response(error):
+    """Turn SQLite write contention into a retryable error, not a failed save."""
+    if connection.vendor != "sqlite" or not any(
+        word in str(error).lower() for word in ("locked", "busy")
+    ):
+        raise error
+    return JsonResponse({
+        "success": False,
+        "error": "Your inventories are being updated. Please try again.",
+    }, status=409)
+
+    
 def _active_inventory(request):
     inventories = Inventory.objects.filter(
         owner=request.user,
@@ -251,6 +276,7 @@ def inventories_api(request):
 
     try:
         with transaction.atomic():
+            _lock_inventory_owner(request.user)
             inventory.full_clean()
             inventory.save()
     except ValidationError as error:
@@ -267,6 +293,8 @@ def inventories_api(request):
             {"error": "Inventory could not be created."},
             status=409,
         )
+    except OperationalError as error:
+        return _inventory_busy_response(error)
 
     request.session[ACTIVE_INVENTORY_KEY] = str(
         inventory.public_id
@@ -336,6 +364,120 @@ def select_inventory_api(request):
     return JsonResponse({
         "success": True,
         "active_inventory_id": str(inventory.public_id),
+    })
+
+@require_http_methods(["PATCH"])
+def update_inventory_api(request, inventory_id):
+    """Rename or describe an owned, unarchived inventory without switching it."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+    if not data or set(data) - {"name", "description"}:
+        return JsonResponse({
+            "error": "Provide only a name and/or description to update.",
+        }, status=400)
+
+    errors = {}
+    for field, value in data.items():
+        if not isinstance(value, str):
+            errors[field] = ["Enter text for this field."]
+    if "name" in data and isinstance(data["name"], str):
+        # Model.clean() runs after field validation, so trim BEFORE full_clean
+        # to reject whitespace-only names and validate the stored length.
+        data["name"] = data["name"].strip()
+        if not data["name"]:
+            errors["name"] = ["Inventory name is required."]
+    if errors:
+        return JsonResponse({"success": False, "errors": errors}, status=400)
+
+    try:
+        with transaction.atomic():
+            _lock_inventory_owner(request.user)
+            inventory = Inventory.objects.filter(
+                public_id=inventory_id,
+                owner=request.user,
+                archived_at__isnull=True,
+            ).first()
+            if inventory is None:
+                return JsonResponse({"error": "Inventory not found."}, status=404)
+
+            for field, value in data.items():
+                setattr(inventory, field, value)
+            inventory.full_clean()
+            inventory.save(update_fields=[*data, "updated_at"])
+            active = _active_inventory(request)
+    except ValidationError as error:
+        return JsonResponse({
+            "success": False,
+            "errors": (
+                error.message_dict
+                if hasattr(error, "message_dict")
+                else {"non_field_errors": error.messages}
+            ),
+        }, status=400)
+    except IntegrityError:
+        return JsonResponse({
+            "error": "An active inventory with this name already exists.",
+        }, status=409)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+
+    return JsonResponse({
+        "success": True,
+        "inventory": {
+            "public_id": str(inventory.public_id),
+            "name": inventory.name,
+            "description": inventory.description,
+        },
+        "active_inventory_id": str(active.public_id) if active else None,
+    })
+
+
+@require_POST
+def archive_inventory_api(request, inventory_id):
+    """Soft-archive an owned inventory, always leaving a usable replacement."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        with transaction.atomic():
+            _lock_inventory_owner(request.user)
+            inventories = Inventory.objects.filter(
+                owner=request.user,
+                archived_at__isnull=True,
+            )
+            inventory = inventories.filter(public_id=inventory_id).first()
+            if inventory is None:
+                return JsonResponse({"error": "Inventory not found."}, status=404)
+            if not inventories.exclude(pk=inventory.pk).exists():
+                return JsonResponse({
+                    "success": False,
+                    "error": (
+                        "You must keep at least one active inventory. "
+                        "Create another inventory before archiving this one."
+                    ),
+                }, status=409)
+
+            inventory.archived_at = timezone.now()
+            inventory.save(update_fields=["archived_at", "updated_at"])
+            # Reuse the existing selection rules. A valid selected inventory
+            # stays selected; an archived/stale selection falls back to the
+            # oldest remaining owned inventory (created_at, then pk).
+            active = _active_inventory(request)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+
+    return JsonResponse({
+        "success": True,
+        "archived_inventory_id": str(inventory.public_id),
+        "active_inventory_id": str(active.public_id),
     })
 
 def dashboard_summary(request):
@@ -506,8 +648,8 @@ def add_item_api(request, inventory_id):
     try:
         current_user = request.user
         # Get the inventory and check ownership
-        inventory = get_object_or_404(Inventory, public_id=inventory_id)
-        
+        inventory = get_object_or_404(Inventory, public_id=inventory_id, archived_at__isnull=True,)
+
         if inventory.owner != current_user:
             return JsonResponse(
                 {'success': False, 'error': 'You can only add items to your own inventory.'},
@@ -576,8 +718,7 @@ def edit_item_api(request, item_id):
 
     try:
         # Get the item and check ownership
-        item = get_object_or_404(Item, public_id=item_id)
-        
+        item = get_object_or_404(Item, public_id=item_id, inventory__archived_at__isnull=True,)        
         current_user = request.user
         if item.inventory.owner != current_user:
             return JsonResponse(
@@ -666,8 +807,7 @@ def inventory_detail_api(request, inventory_id):
 
     try:
         current_user = request.user
-        inventory = get_object_or_404(Inventory, public_id=inventory_id)
-        
+        inventory = get_object_or_404(Inventory, public_id=inventory_id, archived_at__isnull=True,)        
         if inventory.owner != current_user:
             return JsonResponse(
                 {'success': False, 'error': 'You don\'t have access to this inventory.'},
@@ -734,6 +874,7 @@ def item_detail_api(request, item_id):
             ),
             public_id=item_id,
             inventory__owner=request.user,
+            inventory__archived_at__isnull=True,
             archived_at__isnull=True,
         )
 
@@ -818,7 +959,7 @@ def item_attachments_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
-    item = get_object_or_404(Item, public_id=item_id)
+    attachment = get_object_or_404(Attachment,public_id=attachment_id,item__inventory__archived_at__isnull=True,)        
     if item.inventory.owner != request.user:
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
@@ -888,7 +1029,7 @@ def attachment_detail_api(request, attachment_id):
 def item_valuation_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
-    item = get_object_or_404(Item, public_id=item_id, inventory__owner=request.user, archived_at__isnull=True,)
+    item = get_object_or_404(Item,public_id=item_id,inventory__owner=request.user,inventory__archived_at__isnull=True,archived_at__isnull=True,)
     query = " ".join(
         part.strip()
         for part in [item.name, item.brand, item.model_number]
@@ -983,6 +1124,7 @@ def accept_valuation_api(request, item_id):
         Item,
         public_id=item_id,
         inventory__owner=request.user,
+        inventory__archived_at__isnull=True,
         archived_at__isnull=True,
     )
 
@@ -1184,6 +1326,7 @@ def category_detail_api(
     category = get_object_or_404(
         Category,
         public_id=category_id,
+        inventory__archived_at__isnull=True,
         archived_at__isnull=True,
     )
 

@@ -87,8 +87,9 @@ urlpatterns = [
     path("api/inventories/", views.inventories_api, name="inventories-api"),
     path("api/inventories/select/", views.select_inventory_api, name="select-inventory-api"),
     path("api/item/<uuid:item_id>/valuation/", views.item_valuation_api, name="item-valuation-api"),
-    path("api/item/<uuid:item_id>/valuation/accept/", views.accept_valuation_api, name="accept_valuation_api",
-),
+    path("api/item/<uuid:item_id>/valuation/accept/", views.accept_valuation_api, name="accept_valuation_api",),
+    path("api/inventories/<uuid:inventory_id>/", views.update_inventory_api, name="update-inventory-api",),
+    path("api/inventories/<uuid:inventory_id>/archive/", views.archive_inventory_api, name="archive-inventory-api",),
 ]
 
 if settings.DEBUG:
