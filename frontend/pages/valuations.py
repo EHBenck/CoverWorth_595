@@ -1,7 +1,9 @@
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from nicegui import app, ui, run
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
+from utilities.attachments import attachment_url
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from utilities.mockdata import AI_PREVIEW, VALUATION_ITEMS
 
@@ -88,6 +90,7 @@ ui.add_css("""
     .valuation-item-icon {
         width: 48px;
         height: 48px;
+        overflow: hidden;
 
         background: #f1f5f9;
 
@@ -224,6 +227,7 @@ ui.add_css("""
     .preview-image {
         width: 125px;
         height: 125px;
+        overflow: hidden;
 
         border-radius: 10px;
 
@@ -301,6 +305,35 @@ def fetch_inventory_items(cookies):
     response.raise_for_status()
 
     return response.json().get("items", [])
+
+def fetch_primary_photo(item_id, cookies):
+    """Return the raw file_url of an item's first photo attachment, or ''."""
+    try:
+        response = authenticated_session(cookies).get(
+            f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+            timeout=5,
+        )
+        if response.ok:
+            for attachment in response.json().get("attachments", []):
+                if attachment.get("file_type") == "photo" and attachment.get("file_url"):
+                    return attachment["file_url"]
+    except (requests.RequestException, ValueError):
+        pass
+    return ""
+
+
+def add_missing_photos(items, cookies):
+    """Fill in primary_photo_url for items the list endpoint didn't give one for."""
+    missing = [i for i in items if not i.get("primary_photo_url") and i.get("public_id")]
+    if not missing:
+        return
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        urls = list(pool.map(lambda i: fetch_primary_photo(i["public_id"], cookies), missing))
+
+    for item, url in zip(missing, urls):
+        item["primary_photo_url"] = url
+
 
 def raise_for_backend_error(response):
     """Raise with the backend's own message (e.g. "Unable to retrieve eBay listings")."""
@@ -412,9 +445,14 @@ async def valuations_page():
         ui.notify(f"Could not load inventory: {error}", type="negative")
         inventory_items = []
 
+    try:
+        await run.io_bound(add_missing_photos, inventory_items, cookies)
+    except Exception as error:
+        print(f"[VALUATIONS] Could not load photos: {error}")
+
     print("Inventory items from Django:", inventory_items)
     
-    live_valuation = {"result": None}
+    live_valuation = {"result": None, "photo_url": None}
 
     async def update_valuation(item):
         item_id = item.get("public_id")
@@ -462,6 +500,7 @@ async def valuations_page():
 
         print("Live valuation result:", result)
         live_valuation["result"] = result
+        live_valuation["photo_url"] = item.get("primary_photo_url") or None
         valuation_preview.refresh()
   
         if result.get("estimate") is not None:
@@ -618,6 +657,7 @@ async def valuations_page():
 
     for item in inventory_items:
         item["icon"] = "inventory_2"
+        item["primary_photo_url"] = attachment_url(item.get("primary_photo_url") or "")
         item["category"] = item.get("category") or "Uncategorized"
         item["location"] = item.get("location") or "Unspecified"
 
@@ -883,9 +923,14 @@ async def valuations_page():
                         "valuation-item-cell items-center gap-3 flex-nowrap"
                     ):
                         with ui.element("div").classes("valuation-item-icon"):
-                            ui.icon(item["icon"]).classes(
-                                "text-2xl text-slate-600"
-                            )
+                            if item.get("primary_photo_url"):
+                                ui.image(item["primary_photo_url"]).classes(
+                                    "w-full h-full object-cover"
+                                )
+                            else:
+                                ui.icon(item["icon"]).classes(
+                                    "text-2xl text-slate-600"
+                                )
 
                         with ui.column().classes("gap-0 min-w-0"):
                             ui.label(item["name"]).classes(
@@ -1054,12 +1099,19 @@ async def valuations_page():
                             "preview-image"
                         ):
 
-                            ui.icon(
-                                "photo_camera"
-                            ).classes(
-                                "text-6xl "
-                                "text-slate-600"
-                            )
+                            if live_valuation.get("photo_url"):
+                                ui.image(
+                                    live_valuation["photo_url"]
+                                ).classes(
+                                    "w-full h-full object-cover"
+                                )
+                            else:
+                                ui.icon(
+                                    "photo_camera"
+                                ).classes(
+                                    "text-6xl "
+                                    "text-slate-600"
+                                )
 
 
                         with ui.column().classes(

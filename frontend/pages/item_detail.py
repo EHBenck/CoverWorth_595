@@ -6,6 +6,7 @@ from backend_client import (
     authenticated_session,
 )
 from utilities.nav_wrapper import build_app_shell
+from utilities.attachments import attachment_url
 
 # ITEM DETAILS PAGE
 # ============================================================
@@ -66,6 +67,7 @@ ui.add_css(
     .item-photo {
         width: 100%;
         min-height: 260px;
+        overflow: hidden;
 
         background: #f8fafc;
 
@@ -225,6 +227,33 @@ def fetch_item_detail(
         print(f"[ITEM DETAIL] Failed to load item: {error}")
 
         return {}
+
+
+def fetch_item_photo(
+    item_id: str,
+    cookies: dict,
+) -> str | None:
+    """Return the URL of the item's first saved photo attachment, if any."""
+
+    try:
+        response = authenticated_session(cookies).get(
+            f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+            timeout=10,
+        )
+
+        if not response.ok:
+            return None
+
+        for attachment in response.json().get("attachments", []):
+            if attachment.get("file_type") == "photo":
+                url = attachment_url(attachment.get("file_url") or "")
+                if url:
+                    return url
+
+    except (requests.RequestException, ValueError) as error:
+        print(f"[ITEM DETAIL] Failed to load photo: {error}")
+
+    return None
 
 
 def format_money(
@@ -413,6 +442,10 @@ async def item_detail_page(
         {},
     )
 
+    photo_url = attachment_url(item.get("primary_photo_url") or "") or (
+        await run.io_bound(fetch_item_photo, item_id, cookies)
+    )
+
     effective_value = item.get("effective_value")
 
     current_estimate = item.get("current_estimated_amount")
@@ -598,14 +631,15 @@ async def item_detail_page(
 
                     with ui.element("div").classes("item-photo"):
 
-                        ui.icon("inventory_2").classes("text-7xl " "text-slate-300")
+                        if photo_url:
+                            ui.image(photo_url).classes("w-full object-contain")
+                        else:
+                            ui.icon("inventory_2").classes("text-7xl " "text-slate-300")
 
-                    ui.label(
-                        (
-                            "Item photos will appear here "
-                            "once attachment display is connected."
-                        )
-                    ).classes("text-xs muted")
+                    if not photo_url:
+                        ui.label(
+                            "No photo yet. Add one from the Edit Item page."
+                        ).classes("text-xs muted")
 
                 # CURRENT VALUE
                 # =============================================

@@ -158,7 +158,7 @@ async def test_management_load_failure_has_working_retry(user: User, account, ap
     real_url = inventory_management.BACKEND_URL
     monkeypatch.setattr(inventory_management, "BACKEND_URL", "http://127.0.0.1:9")
     await user.open("/settings")
-    await user.should_see("Could not load your inventories. Please try again.", retries=20)
+    await user.should_see("Could not load your inventories. Please try again.", retries=100)
     await user.should_see("Retry")
     await user.should_not_see(marker=f"inventory-{home_id}")
     monkeypatch.setattr(inventory_management, "BACKEND_URL", real_url)

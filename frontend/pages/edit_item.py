@@ -1,5 +1,6 @@
 
 from datetime import date, datetime
+from unicodedata import name
 
 import requests
 from nicegui import app, ui
@@ -446,14 +447,16 @@ async def edit_item_page(item_id: str):
                     async def handle_file_upload(e):
                         try:
                             session = authenticated_session()
-                            # NiceGUI 2.x upload event: content / name / type
-                            file_bytes = e.content.read()
-                            files = {"file": (e.name, file_bytes, e.type)}
+                            file_bytes = await e.file.read()
+                            name = e.file.name
+                            content_type = e.file.content_type or "application/octet-stream"
+                            files = {"file": (name, file_bytes, content_type)}
                             data = {
                                 "file_type": "receipt"
-                                if "pdf" in e.type or "receipt" in e.name.lower()
+                                if "pdf" in content_type or "receipt" in name.lower()
                                 else "photo"
                             }
+                            # ...the rest (session.post, notify, refresh_attachments) stays the same
                             
                             response = session.post(
                                 f"{BACKEND_URL}/api/item/{item_id}/attachments/",
