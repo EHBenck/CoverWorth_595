@@ -353,6 +353,10 @@ class Item(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     archived_at = models.DateTimeField(blank=True, null=True)
+    # archived_at hides an item from the normal app. is_archived says WHY:
+    # True = the user archived it (reversible, shown in the Archived view);
+    # False with archived_at set = the user deleted it.
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -684,6 +688,7 @@ class ComparableListing(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.title
