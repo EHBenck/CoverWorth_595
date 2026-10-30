@@ -218,10 +218,12 @@ def fetch_inventory_id(cookies: dict | None = None) -> str | None:
 def fetch_inventory_items(
     inventory_id: str,
     cookies: dict | None = None,
+    archived: bool = False,
 ) -> list[dict]:
     try:
         response = authenticated_session(cookies).get(
             f"{BACKEND_URL.rstrip('/')}/api/inventory/{inventory_id}/",
+            params={"archived": "true"} if archived else None,
             timeout=10,
         )
         response.raise_for_status()
@@ -326,11 +328,61 @@ async def inventory_page(category: str = ""):
     state = {
         "items": items,
         "categories": categories,
+        "archived": False,
     }
 
     def reload_inventory():
-        state["items"] = fetch_inventory_items(inventory_id)
+        state["items"] = fetch_inventory_items(
+            inventory_id, archived=state["archived"]
+        )
         state["categories"] = fetch_inventory_categories(inventory_id)
+        inventory_rows.refresh()
+
+    async def set_item_archived(item_public_id: str, item_name: str, archive: bool):
+        action = "archive" if archive else "restore"
+
+        def send():
+            session = authenticated_session(cookies)
+            return session.post(
+                f"{BACKEND_URL}/api/item/{item_public_id}/{action}/",
+                headers=csrf_headers(session),
+                timeout=10,
+            )
+
+        try:
+            response = await run.io_bound(send)
+            data = response.json() if response.content else {}
+        except (requests.RequestException, ValueError) as error:
+            ui.notify(f"Connection error: {error}", type="negative")
+            return
+
+        if response.ok and data.get("success", True):
+            ui.notify(
+                f"'{item_name}' {'archived' if archive else 'restored'}.",
+                type="positive",
+            )
+            reload_inventory()
+        else:
+            ui.notify(data.get("error", f"Failed to {action} item."), type="negative")
+
+    async def switch_view(e):
+        state["archived"] = e.value == "archived"
+        subtitle.text = (
+            "Archived items. Restore one to move it back into your inventory."
+            if state["archived"]
+            else "View and manage all of your items"
+        )
+        state["items"] = await run.io_bound(
+            fetch_inventory_items, inventory_id, cookies, state["archived"]
+        )
+        location_filter.set_options(
+            ["All Locations", *sorted({i["location"] for i in state["items"] if i.get("location")})],
+            value="All Locations",
+        )
+        status_filter.set_options(
+            ["All Statuses", *sorted({i["status"] for i in state["items"] if i.get("status")})],
+            value="All Statuses",
+        )
         inventory_rows.refresh()
 
     ui.timer(0.1, reload_inventory, once=True)
@@ -387,26 +439,33 @@ async def inventory_page(category: str = ""):
                     "tracking-tight"
                 )
 
-                ui.label(
+                subtitle = ui.label(
                     "View and manage all of your items"
                 ).classes(
                     "text-base muted"
                 )
 
 
-            ui.button(
-                "Add Item",
-                icon="add",
-                on_click=lambda: ui.navigate.to(
-                    f"/add-item/{inventory_id}?return_to=%2Finventory"
+            with ui.row().classes("items-center gap-3"):
+                ui.toggle(
+                    {"active": "Active", "archived": "Archived"},
+                    value="active",
+                    on_change=switch_view,
+                ).props("no-caps unelevated toggle-color=primary")
+
+                ui.button(
+                    "Add Item",
+                    icon="add",
+                    on_click=lambda: ui.navigate.to(
+                        f"/add-item/{inventory_id}?return_to=%2Finventory"
+                    )
+                ).props(
+                    "unelevated "
+                    "color=primary "
+                    "no-caps"
+                ).classes(
+                    "px-5 py-2 rounded-lg"
                 )
-            ).props(
-                "unelevated "
-                "color=primary "
-                "no-caps"
-            ).classes(
-                "px-5 py-2 rounded-lg"
-            )
 
         # INVENTORY CARD
         with ui.card().classes(
@@ -621,6 +680,20 @@ async def inventory_page(category: str = ""):
                                     f'/edit-item/{item["public_id"]}'
                                 ),
                             )
+                            if state["archived"]:
+                                ui.menu_item(
+                                    "Restore",
+                                    on_click=lambda item=item: set_item_archived(
+                                        item["public_id"], item["name"], False
+                                    ),
+                                )
+                            else:
+                                ui.menu_item(
+                                    "Archive",
+                                    on_click=lambda item=item: set_item_archived(
+                                        item["public_id"], item["name"], True
+                                    ),
+                                )
                             ui.separator()
                             ui.menu_item(
                                 "Delete",

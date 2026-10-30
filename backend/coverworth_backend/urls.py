@@ -71,6 +71,8 @@ urlpatterns = [
     path('api/inventory/<uuid:inventory_id>/add-item/', views.add_item_api, name='add_item_api'),
     path('api/item/<uuid:item_id>/', views.item_detail_api, name='item_detail_api'),
     path('api/item/<uuid:item_id>/edit/', views.edit_item_api, name='edit_item_api'),
+    path('api/item/<uuid:item_id>/archive/', views.item_archive_api, name='item_archive_api'),
+    path('api/item/<uuid:item_id>/restore/', views.item_restore_api, name='item_restore_api'),
     path('api/item/<uuid:item_id>/attachments/', views.item_attachments_api, name='item_attachments_api'),
     path('api/attachment/<uuid:attachment_id>/', views.attachment_detail_api, name='attachment_detail_api'),
     path('api/attachment/<uuid:attachment_id>/file/', views.attachment_file_api, name='attachment-file'),
@@ -93,4 +95,3 @@ urlpatterns = [
     path("api/inventories/<uuid:inventory_id>/", views.update_inventory_api, name="update-inventory-api"),
     path("api/inventories/<uuid:inventory_id>/archive/", views.archive_inventory_api, name="archive-inventory-api"),
 ]
-
