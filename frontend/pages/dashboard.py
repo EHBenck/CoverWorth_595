@@ -1,7 +1,9 @@
 import os
 import requests
-from nicegui import app, ui
+from nicegui import app, run, ui
+from utilities.attachments import attachment_url
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+from utilities.nav_wrapper import build_app_shell
 
 
 # COVERWORTH DASHBOARD
@@ -10,7 +12,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # DATA FETCHING FROM BACKEND
 # ------------------------------------------------------------------
 
-async def load_dashboard_data(cookies):
+def load_dashboard_data(cookies):
     """Fetch dashboard summary using this browser's Django session."""
     try:
         response = authenticated_session(cookies).get(
@@ -73,15 +75,23 @@ def show_login_page(error_message=""):
 
                 app.storage.user["auth_cookies"] = session.cookies.get_dict()
                 app.storage.user["username"] = response.json()["username"]
-                ui.navigate.to("/")
+                ui.navigate.to("/dashboard")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(
                 "unelevated color=primary no-caps"
             ).classes("w-full")
 
+            with ui.row().classes("w-full items-center justify-center gap-1"):
+                ui.label("Don't have an account?").classes("text-sm text-grey-7")
+                ui.button("Register", on_click=lambda: ui.navigate.to("/register")).props(
+                    "flat dense color=primary no-caps"
+                )
+
+
 
 async def sign_out():
     session = authenticated_session()
+
     try:
         response = session.post(
             f"{BACKEND_URL}/api/auth/logout/",
@@ -90,9 +100,16 @@ async def sign_out():
         )
         response.raise_for_status()
     except requests.RequestException:
-        ui.notify("The server could not confirm sign-out.", type="negative")
-    app.storage.user.clear()
+        ui.notify(
+            "The server could not confirm sign-out.",
+            type="negative",
+        )
+
+    app.storage.user.pop("auth_cookies", None)
+    app.storage.user.pop("username", None)
+
     ui.navigate.to("/")
+
 
 # ------------------------------------------------------------------
 # GLOBAL STYLING
@@ -109,55 +126,6 @@ ui.add_css("""
         padding: 0 !important;
         background-color: #f3f8fb !important;
 
-    }
-
-    /* ----------------------------------------------------------
-       Sidebar
-       ---------------------------------------------------------- */
-
-    .sidebar {
-        background: #203756 !important;
-        color: #ffffff;
-    }
-
-    .q-drawer.sidebar,
-    .q-drawer.sidebar .q-drawer__content {
-        background: #203756 !important;
-    }
-
-    .sidebar-logo {
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: -0.3px;
-        color: #ffffff !important;
-    }
-
-    .nav-item {
-        width: 100%;
-        min-height: 48px;
-        border-radius: 8px;
-        color: #ffffff !important;
-        padding: 0 14px;
-    }
-
-    .nav-item:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    .nav-item-active {
-        background: #1769c2;
-        color: white;
-    }
-
-    /* ----------------------------------------------------------
-       Header
-       ---------------------------------------------------------- */
-
-    .q-header.top-header {
-        background-color: #eff5f9 !important;
-        color: #0f172a;
-        border-bottom: 1px solid #dce3ec;
-        box-shadow: none;
     }
 
     /* ----------------------------------------------------------
@@ -202,47 +170,12 @@ ui.add_css("""
         border-radius: 12px;
     }
 
-    /* Makes main content look good on larger screens */
-    .dashboard-container {
-        width: 100%;
-        max-width: 1450px;
-        margin: 0 auto;
-    }
 """, shared=True)
 
 
 # ------------------------------------------------------------------
 # REUSABLE COMPONENTS
 # ------------------------------------------------------------------
-
-def navigation_item(
-    label: str,
-    icon: str,
-    route: str | None = None,
-    active: bool = False,
-) -> None:
-
-    classes = "nav-item items-center gap-3"
-
-    if active:
-        classes += " nav-item-active"
-
-    def Navigate():
-        if route:
-            ui.navigate.to(route)
-        else:
-            ui.notify(f"{label} page has not been implemented yet.")
-
-    with ui.row().classes(classes).on("click", Navigate):
-
-        ui.icon(icon).classes("text-xl").style(
-            "color: #ffffff !important;"
-        )
-
-        ui.label(label).classes("text-sm font-medium").style(
-            "color: #ffffff !important;"
-        )
-
 
 def stat_card(
     title: str,
@@ -329,7 +262,15 @@ def value_by_category_card(category_data) -> None:
                 chart_options = {
                     "tooltip": {
                         "trigger": "item",
-                        "formatter": "{b}: ${c} ({d}%)",
+                        ":formatter": """(params) => {
+                            const name = String(params.name).replace(/[&<>"']/g,
+                                c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;',
+                                       '"': '&quot;', "'": '&#39;'}[c]));
+                            const amount = Number(params.value).toLocaleString('en-US', {
+                                minimumFractionDigits: 2, maximumFractionDigits: 2
+                            });
+                            return name + ': $' + amount + ' (' + params.percent + '%)';
+                        }""",
                     },
                     "series": [
                         {
@@ -352,7 +293,7 @@ def value_by_category_card(category_data) -> None:
                 
                 # Center Text Overlay showing the active sum dynamically
                 with ui.element('div').classes("absolute inset-0 flex flex-col items-center justify-center pointer-events-none"):
-                    ui.label(f"${active_total:,.0f}").classes("text-xl font-bold text-slate-900")
+                    ui.label(f"${active_total:,.2f}").classes("text-xl font-bold text-slate-900")
                     ui.label("Total Value").classes("text-xs text-slate-500")
 
             # Custom Legend using the exact same `colors` array
@@ -408,7 +349,6 @@ def recent_items_card(recent_items) -> None:
             )
 
         for index, item in enumerate(recent_items):
-
             with ui.row().classes(
                 "recent-item w-full items-center "
                 "justify-between py-3 px-2 rounded-lg"
@@ -418,20 +358,25 @@ def recent_items_card(recent_items) -> None:
                     "items-center gap-3"
                 ):
 
+                    # Image or Fallback Icon Container
                     with ui.element("div").classes(
                         "w-11 h-11 bg-slate-100 "
                         "rounded-lg flex items-center "
-                        "justify-center"
+                        "justify-center overflow-hidden"
                     ):
-                        ui.icon(item.get("icon", "inventory_2")).classes(
-                            "text-2xl text-slate-600"
-                        )
+                        item_image = attachment_url(item.get("image") or item.get("image_url"))
+                        if item_image:
+                            ui.image(item_image).classes("w-full h-full object-cover")
+                        else:
+                            ui.icon(item.get("icon", "inventory_2")).classes(
+                                "text-2xl text-slate-600"
+                            )
 
                     with ui.column().classes("gap-0"):
 
                         ui.link(
                             item["name"],
-                            f"/edit-item/{item['public_id']}"
+                            f"/item/{item['public_id']}"
                         ).classes(
                             "text-sm font-semibold"
                         )
@@ -451,7 +396,7 @@ def recent_items_card(recent_items) -> None:
                     ):
 
                         ui.label(
-                            f'${item["value"]:,.0f}'
+                            f'${item["value"]:,.2f}'
                         ).classes(
                             "text-sm font-semibold"
                         )
@@ -521,19 +466,45 @@ def attention_banner(dashboard_data) -> None:
 # ------------------------------------------------------------------
 # PAGE LAYOUT
 # ------------------------------------------------------------------
-
 @ui.page("/")
+async def root_page():
+    await ui.context.client.connected()
+
+    show_login_page(app.storage.user.pop("login_message", ""))
+
+@ui.page("/dashboard")
 async def dashboard_page():
+    await ui.context.client.connected()
     cookies = app.storage.user.get("auth_cookies")
+
     if not cookies:
-        show_login_page()
+        ui.navigate.to("/")
         return
 
-    api_data = await load_dashboard_data(cookies)
+    build_app_shell(
+        "Dashboard",
+        username=app.storage.user.get("username", "User"),
+        on_sign_out=sign_out,
+    )
+
+    with ui.column().classes(
+        "dashboard-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading dashboard...").classes("muted")
+
+    await ui.context.client.connected()
+    api_data = await run.io_bound(load_dashboard_data, cookies)
+
     if api_data is None:
-        app.storage.user.clear()
-        show_login_page("Your session expired. Please sign in again.")
+        app.storage.user.pop("auth_cookies", None)
+        app.storage.user.pop("username", None)
+        app.storage.user["login_message"] = "Your session expired. Please sign in again."
+        ui.navigate.to("/")
         return
+
+    loading.delete()
 
     dashboard_data = api_data["summary"]
     category_data = api_data["category_data"]
@@ -541,147 +512,11 @@ async def dashboard_page():
     inventory_id = api_data.get("inventory_id")
 
     # --------------------------------------------------------------
-    # SIDEBAR
-    # --------------------------------------------------------------
-
-    with ui.left_drawer(
-        value=True,
-        top_corner=True,
-        bottom_corner=True,
-    ).props(
-        "width=230 breakpoint=800"
-    ).classes(
-        "sidebar p-0"
-    ).style(
-        "background-color: #203756 !important;"
-    ) as drawer:
-
-        # Logo
-        with ui.row().classes(
-            "w-full items-center gap-3 px-5 py-6"
-        ):
-
-            with ui.element("div").classes(
-                "w-10 h-10 bg-blue-500/20 "
-                "rounded-xl flex items-center justify-center"
-            ):
-                ui.icon(
-                    "inventory_2"
-                ).classes(
-                    "text-3xl text-blue-400"
-                )
-
-            ui.label(
-                "CoverWorth"
-            ).classes(
-                "sidebar-logo"
-            ).style(
-                "color: #ffffff !important;"
-            )
-
-        # Navigation
-        with ui.column().classes(
-            "w-full px-3 gap-2"
-        ):
-
-            navigation_item(
-                "Dashboard",
-                "home",
-                route="/",
-                active=True,
-            )
-
-            navigation_item(
-                "Inventory",
-                "inventory_2",
-                route="/inventory",
-            )
-
-            navigation_item(
-                "Collections",
-                "folder",
-            )
-
-            navigation_item(
-                "Valuations",
-                "analytics",
-            )
-
-            navigation_item(
-                "Reports",
-                "description",
-            )
-
-            ui.separator().classes(
-                "my-3 opacity-20"
-            )
-
-            navigation_item(
-                "Settings",
-                "settings",
-            )
-
-    # --------------------------------------------------------------
-    # HEADER
-    # --------------------------------------------------------------
-
-    with ui.header().classes(
-        "top-header h-[68px] "
-        "items-center px-5"
-    ).style(
-        "background-color: #eff5f9 !important; color: #0f172a !important;"
-    ):
-
-        ui.button(
-            icon="menu",
-            on_click=drawer.toggle,
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.space()
-
-        # Search box
-        ui.input(
-            placeholder="Search items..."
-        ).props(
-            "outlined dense rounded"
-        ).classes(
-            "w-[420px] max-w-[45vw]"
-        ).props(
-            'prepend-icon="search"'
-        )
-
-        ui.space()
-
-        ui.button(
-            icon="notifications_none"
-        ).props(
-            "flat round color=grey-8"
-        )
-
-        ui.avatar(
-            "KM",
-            color="primary",
-            text_color="white",
-        ).classes(
-            "ml-2"
-        )
-
-        ui.label(app.storage.user.get("username", "User")).classes(
-            "font-medium hidden md:block"
-        )
-
-        ui.button("Sign out", on_click=sign_out, icon="logout").props(
-            "flat no-caps color=grey-8"
-        )
-
-    # --------------------------------------------------------------
     # MAIN DASHBOARD CONTENT
     # --------------------------------------------------------------
 
     with ui.column().classes(
-        "dashboard-container p-7 gap-5"
+        "dashboard-container page-content-frame p-7 gap-5"
     ):
 
         # Dashboard title
@@ -706,7 +541,7 @@ async def dashboard_page():
             ui.button(
                 "Add Item",
                 icon="add",
-                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+                on_click=lambda: ui.navigate.to(f"/add-item/{inventory_id}")
             ).props(
                 "unelevated color=primary no-caps"
             ).classes(
@@ -733,7 +568,7 @@ async def dashboard_page():
             stat_card(
                 title="Estimated Value",
                 value=(
-                    f'${dashboard_data["estimated_value"]:,.0f}'
+                    f'${dashboard_data["estimated_value"]:,.2f}'
                 ),
                 icon="trending_up",
                 icon_color="text-green-600",
@@ -743,7 +578,7 @@ async def dashboard_page():
             stat_card(
                 title="Purchase Value",
                 value=(
-                    f'${dashboard_data["purchase_value"]:,.0f}'
+                    f'${dashboard_data["purchase_value"]:,.2f}'
                 ),
                 icon="sell",
                 change_text="+8% from last month",
@@ -767,10 +602,4 @@ async def dashboard_page():
         # ----------------------------------------------------------
 
         attention_banner(dashboard_data)
-
-
-
-
-
-
 

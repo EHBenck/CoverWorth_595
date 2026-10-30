@@ -63,3 +63,38 @@ After pulling changes, reinstall dependencies if `backend/requirements.txt`
 changed.
 
 Do not commit `backend/.venv/`.
+
+### 5. Running Tests
+
+Backend unit and API workflow tests (each test uses a fresh test database):
+
+	cd backend
+	.\.venv\Scripts\python.exe manage.py test
+
+The tests never call eBay: valuation tests replace eBay's HTTP calls with the
+recorded listings in `backend/inventory_manager/fixtures/raw`, so no eBay
+credentials are needed. Regression tests cover acceptance/display consistency,
+manual overrides, purchase-price fallback, and zero values.
+
+Displayed item value uses an explicit manual override, then an accepted
+estimate, then the purchase price. A blank manual value remains blank.
+Accepting an estimate replaces the active manual override for that item;
+requesting or cancelling a preview does not change its saved value.
+
+Frontend <-> backend integration tests. These start their own Django server
+on a temporary, freshly migrated database and drive the NiceGUI pages
+through NiceGUI's simulated user, so no servers need to be running and
+`db.sqlite3` is not touched. That server answers eBay calls from
+`frontend/tests/fake_ebay.py` and stores uploads in a temporary folder:
+
+	cd frontend
+	..\backend\.venv\Scripts\python.exe -m pytest
+
+To check the real eBay connection by hand (needs `EBAY_CLIENT_ID` and
+`EBAY_CLIENT_SECRET` in `backend/.env`):
+
+	cd backend
+	.\.venv\Scripts\python.exe manage.py shell -c "import runpy; runpy.run_module('inventory_manager.pipeline.test_live', run_name='__main__')"
+
+Using manage.py initializes Django settings, which loads backend/.env before
+the manual live check reads the eBay environment variables.
