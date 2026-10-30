@@ -179,8 +179,10 @@ ui.add_css(
 # ============================================================
 
 
-def load_report_data() -> tuple[dict, str | None]: # Load the report summary and inventory ID from the dashboard endpoint.
-   
+def load_report_data() -> (
+    tuple[dict, str | None]
+):  # Load the report summary and inventory ID from the dashboard endpoint.
+
     default_summary = {
         "total_items": 0,
         "estimated_value": 0,
@@ -228,7 +230,7 @@ def load_report_categories(inventory_id: str) -> dict[str, str] | None:
                 "The categories endpoint returned an unsuccessful response."
             )
 
-        return { #Returns a dict mapping category public ids to their names, filters out categories without public ids or names.
+        return {  # Returns a dict mapping category public ids to their names, filters out categories without public ids or names.
             category["public_id"]: category["name"]
             for category in data.get("categories", [])
             if category.get("public_id") and category.get("name")
@@ -424,13 +426,52 @@ def reports_page():
                         "text-sm muted"
                     )
 
+                    # CSV is available unless the report contains
+                    # photos or supporting documents.
+                    def csv_allowed() -> bool:
+                        return not include_photos.value and not include_receipts.value
+
                     report_format = ui.radio(
                         {
                             "PDF": "PDF",
                             "CSV": "CSV",
                         },
-                        value="PDF",
+                        value="CSV",
                     ).props("inline")
+
+                    csv_warning = ui.label(
+                        (
+                            "CSV cannot include item photos or receipts. "
+                            "Uncheck those options to enable CSV."
+                        )
+                    ).classes("text-sm text-amber-700 hidden")
+
+                    def update_report_formats():
+
+                        if csv_allowed():
+
+                            report_format.options = {
+                                "PDF": "PDF",
+                                "CSV": "CSV",
+                            }
+
+                            csv_warning.visible = False
+
+                        else:
+
+                            # CSV is no longer a valid choice.
+                            report_format.options = {
+                                "PDF": "PDF",
+                            }
+
+                            # If CSV was selected, automatically
+                            # fall back to PDF.
+                            if report_format.value == "CSV":
+                                report_format.value = "PDF"
+
+                            csv_warning.visible = True
+
+                        report_format.update()
 
                     # PDF description
                     with ui.row().classes(
@@ -449,63 +490,175 @@ def reports_page():
                             ui.label("PDF Report").classes("font-semibold")
 
                             ui.label(
-                                "Formatted document suitable "
-                                "for insurance or record keeping."
+                                (
+                                    "Formatted document suitable "
+                                    "for insurance or record keeping."
+                                )
                             ).classes("text-sm muted")
 
                     # CSV description
-                    with ui.row().classes(
-                        "format-card " "w-full " "items-center " "gap-4"
-                    ).on(
-                        "click",
-                        lambda: report_format.set_value("CSV"),
-                    ):
+                    @ui.refreshable
+                    def csv_format_card():
 
-                        with ui.element("div").classes("format-icon"):
+                        disabled = not csv_allowed()
 
-                            ui.icon("table_view").classes("text-2xl text-green-700")
+                        card_classes = "format-card " "w-full " "items-center " "gap-4"
 
-                        with ui.column().classes("gap-0"):
+                        if disabled:
+                            card_classes += " opacity-50 cursor-not-allowed"
 
-                            ui.label("CSV Spreadsheet").classes("font-semibold")
+                        def select_csv():
 
-                            ui.label(
-                                "Raw inventory data for use "
-                                "in Excel or another spreadsheet."
-                            ).classes("text-sm muted")
+                            if disabled:
+
+                                ui.notify(
+                                    (
+                                        "Remove photos and receipts "
+                                        "from the report to use CSV."
+                                    ),
+                                    type="warning",
+                                )
+
+                                return
+
+                            report_format.set_value("CSV")
+
+                        with ui.row().classes(card_classes).on(
+                            "click",
+                            select_csv,
+                        ):
+
+                            with ui.element("div").classes("format-icon"):
+
+                                ui.icon("table_view").classes(
+                                    ("text-2xl " "text-green-700")
+                                )
+
+                            with ui.column().classes("gap-0"):
+
+                                ui.label("CSV Spreadsheet").classes("font-semibold")
+
+                                ui.label(
+                                    (
+                                        "Raw inventory data for use "
+                                        "in Excel or another spreadsheet."
+                                    )
+                                ).classes("text-sm muted")
+
+                    csv_format_card()
+
+                    def report_option_changed():
+                        update_report_formats()
+                        csv_format_card.refresh()
+
+                    include_photos.on(
+                        "update:model-value",
+                        lambda _: report_option_changed(),
+                    )
+                    include_receipts.on(
+                        "update:model-value",
+                        lambda _: report_option_changed(),
+                    )
 
                 # GENERATE BUTTON
                 # ---------------------------------------------
-                def generate_report():
+                async def generate_report():
+                    if report_format.value == "PDF":
+                        ui.notify(
+                            (
+                                "PDF generation has not "
+                                "been implemented yet. "
+                                "Choose CSV to export "
+                                "your inventory."
+                            ),
+                            type="info",
+                        )
+                        return
 
-                    selected_options = []
-
-                    if include_photos.value:
-                        selected_options.append("photos")
-
-                    if include_purchase_prices.value:
-                        selected_options.append("purchase prices")
-
-                    if include_current_values.value:
-                        selected_options.append("current valuations")
-
-                    if include_serial_numbers.value:
-                        selected_options.append("serial numbers")
-
-                    if include_receipts.value:
-                        selected_options.append("receipts")
-
-                    ui.notify(
-                        (
-                            f"{report_format.value} report ready "
-                            f"to generate for "
-                            f"{category_options.get(category_filter.value, 'All Categories')}."
+                    # BUILD CSV QUERY
+                    # --------------------------------------------------------
+                    params = {
+                        "purchase_prices": (
+                            "1" if include_purchase_prices.value else "0"
                         ),
-                        type="positive",
-                    )
+                        "current_values": (
+                            "1" if include_current_values.value else "0"
+                        ),
+                        "serial_numbers": (
+                            "1" if include_serial_numbers.value else "0"
+                        ),
+                    }
+
+                    if category_filter.value:
+                        params["category"] = category_filter.value
+
+                    # REQUEST CSV
+                    # --------------------------------------------------------
+                    try:
+                        session = authenticated_session()
+                        response = session.get(
+                            f"{BACKEND_URL}/api/reports/csv/",
+                            params=params,
+                            timeout=15,
+                        )
+
+                        if response.status_code == 401:
+                            ui.notify(
+                                ("Your session has expired. " "Please sign in again."),
+                                type="negative",
+                            )
+                            return
+
+                        if not response.ok:
+                            try:
+                                message = response.json().get(
+                                    "error",
+                                    "Could not generate report.",
+                                )
+                            except ValueError:
+                                message = "Could not generate report."
+
+                            ui.notify(message, type="negative")
+                            return
+
+                        # GET FILENAME FROM RESPONSE
+                        # ----------------------------------------------------
+                        filename = "coverworth-report.csv"
+                        disposition = response.headers.get(
+                            "Content-Disposition",
+                            "",
+                        )
+
+                        if "filename=" in disposition:
+                            filename = (
+                                disposition.split("filename=", 1)[1].strip().strip('"')
+                            )
+
+                        # DOWNLOAD
+                        # ----------------------------------------------------
+                        ui.download(
+                            response.content,
+                            filename=filename,
+                            media_type="text/csv",
+                        )
+
+                        category_name = category_options.get(
+                            category_filter.value,
+                            "All Categories",
+                        )
+                        ui.notify(
+                            f"CSV report generated for {category_name}.",
+                            type="positive",
+                        )
+
+                    except requests.RequestException as error:
+                        print("Report generation error:", error)
+                        ui.notify(
+                            "Could not connect to the report service.",
+                            type="negative",
+                        )
 
                 with ui.row().classes("w-full justify-end pt-2"):
-
                     ui.button(
                         "Generate Report",
                         icon="description",

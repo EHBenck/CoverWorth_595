@@ -1,14 +1,71 @@
-from nicegui import app, ui
-from utilities.inventory_management import show_inventory_management
+import requests
+from nicegui import app, run, ui
+
+from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+from utilities.inventory_management import _sign_in_again, show_inventory_management
 from utilities.nav_wrapper import build_app_shell
+from utilities.password_rules import show_password_rules
 
 # SETTINGS PAGE
 # -----------------------------------------------------------
 # TODO:
-#   - User profile endpoint
-#   - Password change endpoint
 #   - Account deletion workflow
 # ============================================================
+
+
+# ACCOUNT API
+# ============================================================
+class AccountApiError(Exception):
+    """An account request failed or Django rejected it."""
+
+    def __init__(self, message: str, errors: dict | None = None):
+        super().__init__(message)
+        self.errors = errors or {}
+
+
+class AccountSessionExpired(AccountApiError):
+    """The Django login session no longer exists."""
+
+
+def _account_request(
+    cookies: dict,
+    method: str,
+    endpoint: str,
+    payload: dict | None = None,
+) -> tuple[dict, dict]:
+    """Keep HTTP work off the UI loop and return Django's (possibly rotated) cookies."""
+    with authenticated_session(cookies) as session:
+        headers = csrf_headers(session) if method != "GET" else {}
+        response = session.request(
+            method,
+            f"{BACKEND_URL}{endpoint}",
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        if response.status_code == 401:
+            raise AccountSessionExpired("Your session expired. Please sign in again.")
+        try:
+            result = response.json()
+        except ValueError:
+            result = None
+        if not isinstance(result, dict):
+            raise AccountApiError(f"Account request failed (HTTP {response.status_code}).")
+        if not response.ok:
+            errors = result.get("errors")
+            raise AccountApiError(
+                result.get("error") or "Please check the form and try again.",
+                errors if isinstance(errors, dict) else {},
+            )
+        return result, session.cookies.get_dict()
+
+
+def _show_field_errors(fields: dict, field_errors: dict) -> None:
+    for name, field in fields.items():
+        messages = field_errors.get(name, [])
+        field.props["error"] = bool(messages)
+        field.props["error-message"] = " ".join(messages)
+        field.update()
 
 
 # STYLING
@@ -253,14 +310,34 @@ async def settings_page():
         ui.label("Loading settings...").classes("muted")
 
     await ui.context.client.connected()
+
+    account = {}
+    account_load_error = ""
+    try:
+        result, cookies = await run.io_bound(
+            _account_request,
+            dict(app.storage.user.get("auth_cookies", {})),
+            "GET",
+            "/api/account/",
+        )
+    except AccountSessionExpired:
+        _sign_in_again()
+        return
+    except (requests.RequestException, AccountApiError):
+        account_load_error = "Could not load your account details. Please refresh the page."
+    else:
+        app.storage.user["auth_cookies"] = cookies
+        account = result.get("account", {})
+
     loading.delete()
 
-    username = app.storage.user.get(
+    username = account.get("username") or app.storage.user.get(
         "username",
         "User",
     )
 
     initials = username[:2].upper() if username else "CW"
+    state = {"busy": False}
 
     # MAIN CONTENT
     # ========================================================
@@ -304,7 +381,9 @@ async def settings_page():
 
                         ui.icon("person").classes("text-xl")
 
-                        ui.label("Account").classes("text-sm")
+                        ui.link("Account", "#account").classes(
+                            "text-sm text-inherit no-underline"
+                        )
 
                     # SECURITY
                     # -----------------------------------------
@@ -312,7 +391,9 @@ async def settings_page():
 
                         ui.icon("lock").classes("text-xl")
 
-                        ui.label("Security").classes("text-sm")
+                        ui.link("Security", "#security").classes(
+                            "text-sm text-inherit no-underline"
+                        )
 
             # RIGHT CONTENT
             # =================================================
@@ -322,7 +403,9 @@ async def settings_page():
 
                 # ACCOUNT
                 # =================================================
-                with ui.card().classes("settings-card " "w-full p-6 gap-5"):
+                with ui.card().classes("settings-card " "w-full p-6 gap-5").props(
+                    "id=account"
+                ):
 
                     with ui.column().classes("gap-0"):
 
@@ -358,27 +441,33 @@ async def settings_page():
                             ui.input(
                                 label="First Name",
                                 placeholder="First name",
+                                value=account.get("first_name", ""),
                             )
-                            .props("outlined")
+                            .props("outlined autocomplete=given-name maxlength=150")
                             .classes("settings-field w-full")
+                            .mark("account-first-name")
                         )
 
                         last_name = (
                             ui.input(
                                 label="Last Name",
                                 placeholder="Last name",
+                                value=account.get("last_name", ""),
                             )
-                            .props("outlined")
+                            .props("outlined autocomplete=family-name maxlength=150")
                             .classes("settings-field w-full")
+                            .mark("account-last-name")
                         )
 
                         email = (
                             ui.input(
                                 label="Email",
                                 placeholder="Email address",
+                                value=account.get("email", ""),
                             )
-                            .props("outlined type=email")
+                            .props("outlined type=email autocomplete=email maxlength=254")
                             .classes("settings-field w-full")
+                            .mark("account-email")
                         )
 
                         username_input = (
@@ -390,29 +479,181 @@ async def settings_page():
                             .classes("settings-field w-full")
                         )
 
-                    ui.label(
-                        ("Profile editing is not connected " "to the backend yet.")
-                    ).classes("text-xs muted")
+                    account_fields = {
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "email": email,
+                    }
+
+                    account_error = (
+                        ui.label(account_load_error)
+                        .classes("text-sm text-negative")
+                        .props("role=alert")
+                    )
+
+                    async def save_account() -> None:
+                        if state["busy"]:
+                            return
+                        state["busy"] = True
+                        account_error.text = ""
+                        _show_field_errors(account_fields, {})
+                        save_account_button.disable()
+                        try:
+                            result, cookies = await run.io_bound(
+                                _account_request,
+                                dict(app.storage.user.get("auth_cookies", {})),
+                                "PATCH",
+                                "/api/account/",
+                                {
+                                    name: field.value or ""
+                                    for name, field in account_fields.items()
+                                },
+                            )
+                        except AccountSessionExpired:
+                            _sign_in_again()
+                        except AccountApiError as error:
+                            _show_field_errors(account_fields, error.errors)
+                            account_error.text = str(error)
+                        except requests.RequestException:
+                            account_error.text = (
+                                "Could not save your account. Please try again."
+                            )
+                        else:
+                            app.storage.user["auth_cookies"] = cookies
+                            # Show the trimmed values Django actually stored.
+                            for name, field in account_fields.items():
+                                field.value = result["account"][name]
+                            ui.notify("Account updated.", type="positive")
+                        finally:
+                            state["busy"] = False
+                            if not account_load_error:
+                                save_account_button.enable()
 
                     with ui.row().classes("w-full justify-end"):
 
-                        ui.button(
+                        save_account_button = ui.button(
                             "Save Account",
                             icon="save",
-                            on_click=lambda: ui.notify(
-                                (
-                                    "Account editing will be "
-                                    "connected in a future story."
-                                ),
-                                type="info",
-                            ),
+                            on_click=save_account,
                         ).props("unelevated " "color=primary " "no-caps").classes(
                             "px-5"
                         )
 
+                    # Saving without the stored values would overwrite them.
+                    if account_load_error:
+                        save_account_button.disable()
+
+                # CHANGE PASSWORD DIALOG
+                # =================================================
+                with ui.dialog().props("persistent").mark(
+                    "change-password-dialog"
+                ) as password_dialog:
+                    with ui.card().classes("w-[480px] max-w-full p-6 gap-4"):
+                        ui.label("Change password").classes("text-xl font-bold")
+
+                        current_password = (
+                            ui.input("Current password", password=True)
+                            .props("outlined autofocus autocomplete=current-password")
+                            .classes("w-full")
+                            .mark("current-password")
+                        )
+                        new_password = (
+                            ui.input("New password", password=True)
+                            .props("outlined autocomplete=new-password")
+                            .classes("w-full")
+                            .mark("new-password")
+                        )
+
+                        show_password_rules(new_password)
+
+                        new_password_confirm = (
+                            ui.input("Confirm new password", password=True)
+                            .props("outlined autocomplete=new-password")
+                            .classes("w-full")
+                            .mark("new-password-confirm")
+                        )
+                        password_error = (
+                            ui.label().classes("text-sm text-negative").props("role=alert")
+                        )
+
+                        password_fields = {
+                            "current_password": current_password,
+                            "new_password": new_password,
+                            "new_password_confirm": new_password_confirm,
+                        }
+
+                        def reset_password_form() -> None:
+                            for field in password_fields.values():
+                                field.value = ""
+                            _show_field_errors(password_fields, {})
+                            password_error.text = ""
+
+                        async def change_password() -> None:
+                            if state["busy"]:
+                                return
+                            password_error.text = ""
+                            _show_field_errors(password_fields, {})
+                            if new_password.value != new_password_confirm.value:
+                                _show_field_errors(
+                                    password_fields,
+                                    {"new_password_confirm": ["Passwords do not match."]},
+                                )
+                                return
+
+                            state["busy"] = True
+                            controls = (confirm_password, password_cancel, *password_fields.values())
+                            for control in controls:
+                                control.disable()
+                            try:
+                                _, cookies = await run.io_bound(
+                                    _account_request,
+                                    dict(app.storage.user.get("auth_cookies", {})),
+                                    "POST",
+                                    "/api/account/password/",
+                                    {
+                                        name: field.value or ""
+                                        for name, field in password_fields.items()
+                                    },
+                                )
+                            except AccountSessionExpired:
+                                password_dialog.close()
+                                _sign_in_again()
+                            except AccountApiError as error:
+                                _show_field_errors(password_fields, error.errors)
+                                password_error.text = str(error)
+                            except requests.RequestException:
+                                password_error.text = (
+                                    "Could not change your password. Please try again."
+                                )
+                            else:
+                                # Django rotated the session key; keep the new cookie
+                                # so this browser stays signed in.
+                                app.storage.user["auth_cookies"] = cookies
+                                password_dialog.close()
+                                reset_password_form()
+                                ui.notify("Password changed.", type="positive")
+                            finally:
+                                state["busy"] = False
+                                for control in controls:
+                                    control.enable()
+
+                        def cancel_password_change() -> None:
+                            password_dialog.close()
+                            reset_password_form()
+
+                        with ui.row().classes("w-full justify-end gap-2"):
+                            password_cancel = ui.button(
+                                "Cancel", on_click=cancel_password_change
+                            ).props("flat no-caps").mark("cancel-password-change")
+                            confirm_password = ui.button(
+                                "Update password", on_click=change_password
+                            ).props("unelevated no-caps color=primary")
+
                 # SECURITY
                 # =================================================
-                with ui.card().classes("settings-card " "w-full p-6 gap-4"):
+                with ui.card().classes("settings-card " "w-full p-6 gap-4").props(
+                    "id=security"
+                ):
 
                     with ui.column().classes("gap-0"):
 
@@ -444,10 +685,7 @@ async def settings_page():
 
                         ui.button(
                             "Change Password",
-                            on_click=lambda: ui.notify(
-                                ("Password management " "is not connected yet."),
-                                type="info",
-                            ),
+                            on_click=password_dialog.open,
                         ).props("outline " "color=primary " "no-caps")
 
                     # DELETE ACCOUNT
