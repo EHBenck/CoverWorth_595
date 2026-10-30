@@ -6,24 +6,58 @@ import pandas as pd
 from .schemas import Listing
 from .conditions import CONDITION_MAP 
 from .ebay_client import load
+import re
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "raw"
 GROUND_TRUTH = Path(__file__).parents[1] / "ground_truth" / "ground_truth.csv"
 EXCLUDE = ("case", "cover", "charger", "for parts", "box only", "screen protector")
 
+def normalize_text(text):
+        text = text.lower()
+        text = re.sub(r"(\d+)\s+(gb|tb)", r"\1\2", text)
+        return text
+
+def matches_storage(query, title):
+    query_storage = set(
+        re.findall(r"\b\d+(?:gb|tb)\b", normalize_text(query))
+    )
+
+    title_storage = set(
+        re.findall(r"\b\d+(?:gb|tb)\b", normalize_text(title))
+    )
+
+    if not query_storage:
+        return True
+
+    return title_storage == query_storage
+
+def matches_variant(query, title):
+    variants = ("mini", "pro", "max", "plus", "ultra")
+
+    query_words = set(normalize_text(query).split())
+    title_words = set(normalize_text(title).split())
+
+    for variant in variants:
+        if variant in title_words and variant not in query_words:
+            return False
+
+    return True
 
 def estimate(rows, query, want_condition="used"):
     kept = [r for r in rows if r.condition == want_condition]
    
     kept = [r for r in kept if not any(w in r.title.lower() for w in EXCLUDE)]
+    import re
+
+    query_words = normalize_text(query).split()
+
     kept = [
         r for r in kept
-        if "iphone 13" in r.title.lower()
-        and "128gb" in r.title.lower().replace(" ", "")
-        and "mini" not in r.title.lower()
-        and "256gb" not in r.title.lower().replace(" ", "")
-        and "512gb" not in r.title.lower().replace(" ", "")
+        if all(word in normalize_text(r.title) for word in query_words)
+        and matches_storage(query, r.title)
+        and matches_variant(query, r.title)
     ]
+    
     if len(kept) < 3:
         return {"query": query, "estimate": None, "n": len(kept), "confidence": "insufficient", "comparables": kept,}
     prices = sorted(float(r.price) for r in kept)
