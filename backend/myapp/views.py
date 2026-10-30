@@ -3,7 +3,13 @@ import requests
 from decimal import Decimal
 from uuid import UUID
 
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import (
+    authenticate,
+    get_user_model,
+    login,
+    logout,
+    update_session_auth_hash,
+)
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -145,6 +151,158 @@ def auth_register(request):
 def auth_logout(request):
     logout(request)
     return JsonResponse({"authenticated": False})
+
+
+ACCOUNT_FIELDS = {
+    "first_name": "First name",
+    "last_name": "Last name",
+    "email": "Email",
+}
+
+
+def _account_payload(user):
+    return {
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "username": user.get_username(),
+    }
+
+
+@require_http_methods(["GET", "PATCH"])
+def account_api(request):
+    """Read or update the signed-in user's own profile. There is no user id in
+    the URL, so one account can never address another."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    user = request.user
+
+    if request.method == "GET":
+        return JsonResponse({"success": True, "account": _account_payload(user)})
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+    if not data or set(data) - set(ACCOUNT_FIELDS):
+        return JsonResponse({
+            "error": "Provide only a first name, last name, and/or email to update.",
+        }, status=400)
+
+    errors = {}
+    fields = {}
+    for name, value in data.items():
+        if not isinstance(value, str):
+            errors[name] = ["Enter text for this field."]
+            continue
+        fields[name] = value.strip()
+        if not fields[name]:
+            errors[name] = [f"{ACCOUNT_FIELDS[name]} is required."]
+
+    User = get_user_model()
+
+    if fields.get("email") and "email" not in errors:
+        try:
+            validate_email(fields["email"])
+        except ValidationError:
+            errors["email"] = ["Enter a valid email address."]
+        else:
+            if (
+                User.objects
+                .filter(email__iexact=fields["email"])
+                .exclude(pk=user.pk)
+                .exists()
+            ):
+                errors["email"] = ["An account with this email already exists."]
+
+    if not errors:
+        for name, value in fields.items():
+            setattr(user, name, value)
+        # Field validation enforces the model's max_length for each column.
+        try:
+            user.clean_fields(exclude=[
+                field.name for field in User._meta.fields if field.name not in fields
+            ])
+        except ValidationError as error:
+            errors = error.message_dict
+
+    if errors:
+        user.refresh_from_db()
+        first_error = next(iter(errors.values()))[0]
+        return JsonResponse({"error": first_error, "errors": errors}, status=400)
+
+    user.save(update_fields=list(fields))
+    return JsonResponse({"success": True, "account": _account_payload(user)})
+
+
+@require_POST
+def change_password_api(request):
+    """Change the signed-in user's password and keep this session signed in.
+
+    update_session_auth_hash() rotates this session's key, so the client must
+    store the new session cookie. Other sessions for the user are signed out.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+
+    fields = {}
+    for name in ("current_password", "new_password", "new_password_confirm"):
+        value = data.get(name, "")
+        fields[name] = value if isinstance(value, str) else ""
+
+    errors = {}
+    labels = {
+        "current_password": "Current password",
+        "new_password": "New password",
+        "new_password_confirm": "Password confirmation",
+    }
+    for name, label in labels.items():
+        if not fields[name]:
+            errors[name] = [f"{label} is required."]
+
+    user = request.user
+
+    if fields["current_password"] and not user.check_password(fields["current_password"]):
+        errors["current_password"] = ["Your current password is incorrect."]
+
+    if (
+        fields["new_password"]
+        and fields["new_password_confirm"]
+        and fields["new_password"] != fields["new_password_confirm"]
+    ):
+        errors["new_password_confirm"] = ["Passwords do not match."]
+
+    if fields["new_password"] and not errors:
+        if fields["new_password"] == fields["current_password"]:
+            errors["new_password"] = [
+                "New password must be different from your current password."
+            ]
+        else:
+            try:
+                validate_password(fields["new_password"], user=user)
+            except ValidationError as e:
+                errors["new_password"] = list(e.messages)
+
+    if errors:
+        first_error = next(iter(errors.values()))[0]
+        return JsonResponse({"error": first_error, "errors": errors}, status=400)
+
+    user.set_password(fields["new_password"])
+    user.save(update_fields=["password"])
+    update_session_auth_hash(request, user)
+    return JsonResponse({"success": True})
 
 ACTIVE_INVENTORY_KEY = "active_inventory_id"
 

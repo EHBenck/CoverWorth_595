@@ -386,6 +386,219 @@ class RegistrationAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, 405)
 
+
+class AccountSettingsAPITestCase(TestCase):
+    PASSWORD = "Sturdy-passphrase-42"
+    NEW_PASSWORD = "Fresh-passphrase-77"
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="carol",
+            email="carol@example.com",
+            password=self.PASSWORD,
+            first_name="Carol",
+            last_name="Jones",
+        )
+        self.other = User.objects.create_user(
+            username="dave",
+            email="dave@example.com",
+            password=self.PASSWORD,
+            first_name="Dave",
+            last_name="Brown",
+        )
+        self.client = Client(enforce_csrf_checks=True)
+        self.client.force_login(self.user)
+
+    def _write(self, method, path, payload=None, *, client=None):
+        client = client or self.client
+        token = client.get("/api/auth/csrf/").cookies["csrftoken"].value
+        return getattr(client, method)(
+            path,
+            data=payload if isinstance(payload, str) else json.dumps({} if payload is None else payload),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+    def _update(self, payload, **kwargs):
+        return self._write("patch", "/api/account/", payload, **kwargs)
+
+    def _change_password(self, **overrides):
+        payload = {
+            "current_password": self.PASSWORD,
+            "new_password": self.NEW_PASSWORD,
+            "new_password_confirm": self.NEW_PASSWORD,
+            **overrides,
+        }
+        return self._write("post", "/api/account/password/", payload)
+
+    def test_account_returns_signed_in_users_profile(self):
+        response = self.client.get("/api/account/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["account"], {
+            "first_name": "Carol",
+            "last_name": "Jones",
+            "email": "carol@example.com",
+            "username": "carol",
+        })
+
+    def test_owner_can_update_names_and_email(self):
+        response = self._update({
+            "first_name": "  Caroline ",
+            "last_name": "Smith",
+            "email": " caroline@example.com ",
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["account"]["email"], "caroline@example.com")
+        self.user.refresh_from_db()
+        self.assertEqual(
+            (self.user.first_name, self.user.last_name, self.user.email, self.user.username),
+            ("Caroline", "Smith", "caroline@example.com", "carol"),
+        )
+
+    def test_partial_update_preserves_other_fields(self):
+        response = self._update({"last_name": "Taylor"})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.user.refresh_from_db()
+        self.assertEqual(
+            (self.user.first_name, self.user.last_name, self.user.email),
+            ("Carol", "Taylor", "carol@example.com"),
+        )
+
+    def test_user_can_keep_own_email_with_different_case(self):
+        response = self._update({"email": "CAROL@example.com"})
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_duplicate_email_is_rejected_case_insensitively(self):
+        response = self._update({"first_name": "Changed", "email": " DAVE@example.com "})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.json()["errors"])
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.first_name, self.user.email), ("Carol", "carol@example.com"))
+
+    def test_invalid_blank_and_too_long_fields_are_rejected_without_changes(self):
+        for payload, field in [
+            ({"email": "not-an-email"}, "email"),
+            ({"email": "   "}, "email"),
+            ({"first_name": ""}, "first_name"),
+            ({"last_name": 42}, "last_name"),
+            ({"first_name": "x" * 151}, "first_name"),
+        ]:
+            with self.subTest(payload=payload):
+                response = self._update(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()["errors"])
+        self.user.refresh_from_db()
+        self.assertEqual(
+            (self.user.first_name, self.user.last_name, self.user.email),
+            ("Carol", "Jones", "carol@example.com"),
+        )
+
+    def test_unknown_fields_cannot_change_username_or_another_account(self):
+        for payload in [
+            {"username": "mallory"},
+            {"id": self.other.pk, "first_name": "Hacked"},
+            {"is_staff": True},
+            {},
+        ]:
+            with self.subTest(payload=payload):
+                self.assertEqual(self._update(payload).status_code, 400)
+        self.assertEqual(self._update("[]").status_code, 400)
+        self.assertEqual(self._update("{bad json").status_code, 400)
+
+        self.user.refresh_from_db()
+        self.other.refresh_from_db()
+        self.assertEqual((self.user.username, self.user.is_staff), ("carol", False))
+        self.assertEqual(self.other.first_name, "Dave")
+
+    def test_update_only_changes_the_signed_in_account(self):
+        self._update({"first_name": "Caroline"})
+
+        self.other.refresh_from_db()
+        self.assertEqual(self.other.first_name, "Dave")
+
+    def test_account_endpoints_require_authentication(self):
+        anonymous = Client()
+        self.assertEqual(anonymous.get("/api/account/").status_code, 401)
+        self.assertEqual(
+            self._update({"first_name": "X"}, client=anonymous).status_code, 401
+        )
+        self.assertEqual(
+            self._write("post", "/api/account/password/", {}, client=anonymous).status_code, 401
+        )
+
+    def test_account_writes_require_csrf_and_correct_methods(self):
+        self.assertEqual(
+            self.client.patch("/api/account/", data='{"first_name":"X"}', content_type="application/json").status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post("/api/account/password/", data="{}", content_type="application/json").status_code,
+            403,
+        )
+        self.assertEqual(self.client.get("/api/account/password/").status_code, 405)
+        self.assertEqual(self._write("post", "/api/account/", {"first_name": "X"}).status_code, 405)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Carol")
+
+    def test_password_change_uses_django_hashing_and_keeps_session(self):
+        response = self._change_password()
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.NEW_PASSWORD))
+        self.assertNotEqual(self.user.password, self.NEW_PASSWORD)
+        self.assertEqual(self.client.get("/api/account/").status_code, 200)
+
+        fresh = Client()
+        self.assertEqual(
+            fresh.post(
+                "/api/auth/login/",
+                data={"username": "carol", "password": self.PASSWORD},
+                content_type="application/json",
+            ).status_code,
+            401,
+        )
+        self.assertEqual(
+            fresh.post(
+                "/api/auth/login/",
+                data={"username": "carol", "password": self.NEW_PASSWORD},
+                content_type="application/json",
+            ).status_code,
+            200,
+        )
+
+    def test_password_change_signs_out_other_sessions(self):
+        other_session = Client()
+        other_session.force_login(self.user)
+
+        self.assertEqual(self._change_password().status_code, 200)
+
+        self.assertEqual(other_session.get("/api/account/").status_code, 401)
+
+    def test_password_change_validation(self):
+        for overrides, field in [
+            ({"current_password": "wrong-secret"}, "current_password"),
+            ({"current_password": ""}, "current_password"),
+            ({"new_password_confirm": "Different-passphrase-1"}, "new_password_confirm"),
+            ({"new_password": "", "new_password_confirm": ""}, "new_password"),
+            ({"new_password": "short", "new_password_confirm": "short"}, "new_password"),
+            ({"new_password": "12345678901", "new_password_confirm": "12345678901"}, "new_password"),
+            ({"new_password": "password123", "new_password_confirm": "password123"}, "new_password"),
+            ({"new_password": "carolexample", "new_password_confirm": "carolexample"}, "new_password"),
+            ({"new_password": self.PASSWORD, "new_password_confirm": self.PASSWORD}, "new_password"),
+        ]:
+            with self.subTest(overrides=overrides):
+                response = self._change_password(**overrides)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()["errors"])
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.PASSWORD))
+
 class InventorySwitchingTestCase(TestCase):
 
     def setUp(self):
