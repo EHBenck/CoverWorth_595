@@ -34,6 +34,17 @@ def _attachment_file_url(attachment):
     return reverse("attachment-file", kwargs={"attachment_id": attachment.public_id})
 
 
+def _primary_photo_url(item):
+    """URL of the item's primary (or newest) photo, or None."""
+    photo = item.attachments.filter(
+        file_type="photo",
+        archived_at__isnull=True,
+    ).order_by("-is_primary", "-uploaded_at").first()
+    if photo and photo.file:
+        return _attachment_file_url(photo)
+    return None
+
+
 @ensure_csrf_cookie
 def auth_csrf(request):
     return JsonResponse({"detail": "CSRF cookie set"})
@@ -1049,6 +1060,7 @@ def item_list(request):
                 ),
                 "effective_value_source": item.effective_value_source,
                 "updated_at": item.updated_at.isoformat(),
+                "primary_photo_url": _primary_photo_url(item),
             }
             for item in items
         ]
@@ -1123,10 +1135,13 @@ def edit_item_api(request, item_id):
 
     try:
         # Exclude archived items and items in archived inventories.
+        # Items the user archived can still be viewed, edited and deleted.
+        visible = Q(archived_at__isnull=True) | Q(is_archived=True)
+
         item = get_object_or_404(
             Item,
+            visible,
             public_id=item_id,
-            archived_at__isnull=True,
             inventory__archived_at__isnull=True,
         )
         current_user = request.user
@@ -1174,8 +1189,11 @@ def edit_item_api(request, item_id):
             return _save_item_form_response(request, item.inventory, item)
 
         if request.method == 'DELETE':
-            item.archived_at = timezone.now()
-            item.save(update_fields=['archived_at', 'updated_at'])
+            # Deleting an archived item turns it into a deleted one.
+            item.is_archived = False
+            if item.archived_at is None:
+                item.archived_at = timezone.now()
+            item.save(update_fields=['is_archived', 'archived_at', 'updated_at'])
             return JsonResponse({
                 'success': True,
                 'message': f"Item '{item.name}' was deleted successfully.",
@@ -1196,6 +1214,50 @@ def edit_item_api(request, item_id):
             'error': str(e),
         }, status=500)
 
+def _set_item_archived(request, item_id, archive):
+    """Archive an active item, or restore one the user archived."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "error": "Authentication required."}, status=401)
+
+    items = Item.objects.select_related("inventory").filter(
+        public_id=item_id,
+        inventory__archived_at__isnull=True,
+    )
+    if archive:
+        item = items.filter(archived_at__isnull=True).first()
+    else:
+        item = items.filter(is_archived=True).first()
+
+    if item is None:
+        return JsonResponse({"success": False, "error": "Item not found."}, status=404)
+    if item.inventory.owner != request.user:
+        return JsonResponse(
+            {"success": False, "error": "You can only change items in your own inventory."},
+            status=403,
+        )
+
+    item.is_archived = archive
+    item.archived_at = timezone.now() if archive else None
+    item.save(update_fields=["is_archived", "archived_at", "updated_at"])
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Item '{item.name}' was {'archived' if archive else 'restored'}.",
+    })
+
+
+@require_POST
+def item_archive_api(request, item_id):
+    """Move an item into the user's archive."""
+    return _set_item_archived(request, item_id, archive=True)
+
+
+@require_POST
+def item_restore_api(request, item_id):
+    """Move an archived item back into the active inventory."""
+    return _set_item_archived(request, item_id, archive=False)
+
+
 @require_http_methods(["GET"])
 def inventory_detail_api(request, inventory_id):
     """API endpoint for getting all items in an inventory"""
@@ -1211,8 +1273,21 @@ def inventory_detail_api(request, inventory_id):
                 status=403
             )
         
-        items = inventory.items.filter(archived_at__isnull=True).select_related('category', 'location').order_by('-updated_at')
-        items = _filter_items_by_location(items, inventory, request.GET.get('location'))
+        if request.GET.get('archived') == 'true':
+            # Only items the user archived, not ones they deleted.
+            items = inventory.items.filter(is_archived=True)
+        else:
+            items = inventory.items.filter(archived_at__isnull=True)
+
+        items = items.select_related(
+            'category', 'location'
+        ).order_by('-updated_at')
+
+        items = _filter_items_by_location(
+            items,
+            inventory,
+            request.GET.get('location'),
+        )
 
         items_data = []
         for item in items:
@@ -1276,10 +1351,10 @@ def item_detail_api(request, item_id):
                 "category",
                 "location",
             ),
+            Q(archived_at__isnull=True) | Q(is_archived=True),
             public_id=item_id,
             inventory__owner=request.user,
             inventory__archived_at__isnull=True,
-            archived_at__isnull=True,
         )
 
         return JsonResponse(
@@ -1365,9 +1440,12 @@ def item_attachments_api(request, item_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
+    # Archived items keep their attachments editable.
+    item_visible = Q(archived_at__isnull=True) | Q(is_archived=True)
+
     item = Item.objects.filter(
+        item_visible,
         public_id=item_id,
-        archived_at__isnull=True,
         inventory__archived_at__isnull=True,
     ).first()
     if item is None:
@@ -1451,10 +1529,10 @@ def attachment_file_api(request, attachment_id):
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     attachment = Attachment.objects.filter(
+        Q(item__archived_at__isnull=True) | Q(item__is_archived=True),
         public_id=attachment_id,
         item__inventory__owner=request.user,
         archived_at__isnull=True,
-        item__archived_at__isnull=True,
         item__inventory__archived_at__isnull=True,
     ).first()
     if attachment is None or not attachment.file:
@@ -1486,9 +1564,9 @@ def attachment_detail_api(request, attachment_id):
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     attachment = Attachment.objects.filter(
+        Q(item__archived_at__isnull=True) | Q(item__is_archived=True),
         public_id=attachment_id,
         archived_at__isnull=True,
-        item__archived_at__isnull=True,
         item__inventory__archived_at__isnull=True,
     ).first()
     if attachment is None:
