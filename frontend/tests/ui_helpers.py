@@ -77,11 +77,11 @@ def make_backend_unreachable(monkeypatch) -> None:
         add_item, categories, dashboard, edit_item, inventory,
         item_detail, register, reports, valuations,
     )
-    from utilities import inventory_switcher
+    from utilities import inventory_switcher, location_management
     import backend_client
 
     for module in (
         backend_client, dashboard, register, add_item, edit_item, categories,
-        reports, inventory, item_detail, valuations, inventory_switcher,
+        reports, inventory, item_detail, valuations, inventory_switcher, location_management,
     ):
         monkeypatch.setattr(module, "BACKEND_URL", UNREACHABLE_BACKEND)

@@ -9,6 +9,7 @@ from backend_client import (
     csrf_headers,
 )
 from utilities.nav_wrapper import build_app_shell
+from utilities.location_management import LocationControls, _sign_in_again
 
 ui.add_css(
     """
@@ -154,6 +155,7 @@ def load_add_item_options(
                 )
             ),
             "categories": (category_options),
+            "locations": data.get("locations"),
         }
 
     except requests.RequestException as error:
@@ -316,6 +318,12 @@ async def add_item_page(
 
                     category_error = ui.label().classes("field-error hidden")
 
+                    location_controls = LocationControls(
+                        inventory_id, locations=options.get("locations"),
+                    )
+                    location_error = ui.label().classes("field-error").props("role=alert").mark("item-location-error")
+                    location_error.visible = False
+
                     description_input = (
                         ui.textarea(
                             label="Description"
@@ -431,6 +439,8 @@ async def add_item_page(
                                 label=("Purchase Price ($) *"),
                                 min=0,
                                 step=0.01,
+                                precision=2,
+                                format="%.2f",
                                 validation={
                                     "Purchase price cannot be negative.": lambda value: 
                                         value is None or value >= 0,
@@ -445,6 +455,8 @@ async def add_item_page(
                                 label=("Manual Value ($)"),
                                 min=0,
                                 step=0.01,
+                                precision=2,
+                                format="%.2f",
                             )
                             .props("outlined")
                             .classes("form-control w-full")
@@ -458,10 +470,8 @@ async def add_item_page(
 
                     ui.label(
                         (
-                            "If no manual value is "
-                            "entered, CoverWorth currently "
-                            "uses the purchase price as "
-                            "the initial manual value."
+                            "Leave manual value blank to use an accepted "
+                            "estimate, or the purchase price until you accept one."
                         )
                     ).classes("required-note")
 
@@ -523,9 +533,10 @@ async def add_item_page(
 
                     async def photo_selected(e):
                         nonlocal uploaded_file, uploaded_filename, uploaded_content_type
-                        uploaded_file = await e.file.read()
-                        uploaded_filename = e.file.name
-                        uploaded_content_type = e.file.content_type or "image/jpeg"
+                        # NiceGUI 2.x provides a binary stream on the upload event.
+                        uploaded_file = e.content.read()
+                        uploaded_filename = e.name
+                        uploaded_content_type = e.type or "image/jpeg"
                         ui.notify(
                             f"Photo '{uploaded_filename}' selected. It will upload when you add the item.",
                             type="positive",
@@ -587,6 +598,7 @@ async def add_item_page(
         # ====================================================
         async def submit_form():
 
+            error_label.classes(remove="hidden")
             error_label.visible = False
             success_label.visible = False
 
@@ -596,9 +608,16 @@ async def add_item_page(
                 date_error,
                 amount_error,
                 quantity_error,
+                location_error,
             ]:
+                label.classes(remove="hidden")
                 label.visible = False
             quantity_input.props(remove="error")
+
+            if not location_controls.ready:
+                location_error.text = "Locations are unavailable. Retry loading locations before saving."
+                location_error.visible = True
+                return
 
             name = (name_input.value or "").strip()
             try:
@@ -616,6 +635,7 @@ async def add_item_page(
             form_data = {
                 "name": name,
                 "category": (category_select.value or ""),
+                "location": location_controls.value,
                 "purchase_date": (purchase_date_input.value or ""),
                 "purchase_amount": (
                     purchase_amount_input.value
@@ -650,6 +670,10 @@ async def add_item_page(
                 error_label.visible = True
                 return
 
+            if response.status_code == 401:
+                _sign_in_again()
+                return
+
             try:
                 result = response.json()
             except ValueError:
@@ -660,12 +684,16 @@ async def add_item_page(
                 for field, label in {
                     "name": name_error,
                     "category": category_error,
+                    "location": location_error,
                     "purchase_date": date_error,
                     "purchase_amount": amount_error,
                     "quantity": quantity_error,
                 }.items():
                     if field in server_errors:
-                        label.text = str(server_errors[field])
+                        message = server_errors[field]
+                        if isinstance(message, list):
+                            message = message[0] if message else "Invalid value."
+                        label.text = str(message)
                         label.visible = True
                 error_label.text = result.get(
                     "error", "Couldn't add the item. Check the highlighted fields."

@@ -501,16 +501,14 @@ async def valuations_page():
         print("Live valuation result:", result)
         live_valuation["result"] = result
         live_valuation["photo_url"] = item.get("primary_photo_url") or None
+        # A fetched estimate is a preview. Saved values change only after Accept.
         valuation_preview.refresh()
-  
-        if result.get("estimate") is not None:
-            item["current_value"] = float(result["estimate"])
-            item["estimated_value"] = float(result["estimate"])
-            item["status"] = "Current"
-            item["days_old"] = 0
-            item["last_updated"] = "Just now"
 
-            valuation_table.refresh()
+    def cancel_valuation():
+        live_valuation["result"] = None
+        live_valuation["photo_url"] = None
+        valuation_preview.refresh()
+        ui.notify("Valuation preview cancelled.")
 
     async def show_valuation_history(item):
         item_id = item.get("public_id")
@@ -638,6 +636,8 @@ async def valuations_page():
                 if item["public_id"] == item_id:
                     item["estimated_value"] = saved["estimated_value"]
                     item["current_value"] = saved["estimated_value"]
+                    item["effective_value"] = saved["effective_value"]
+                    item["effective_value_source"] = saved["effective_value_source"]
                     item["status"] = "Current"
                     item["days_old"] = 0
                     item["last_updated"] = "Just now"
@@ -673,7 +673,7 @@ async def valuations_page():
             item["last_updated"] = "Never"
 
         item["status"] = (
-            "Current" if item.get("estimated_value") is not None
+            "Current" if item.get("effective_value_source") in ("manual", "estimated")
             else "Needs Review"
         )
 
@@ -939,12 +939,12 @@ async def valuations_page():
                             ui.label(item["category"]).classes("text-xs muted")
 
                     ui.label(
-                        f'${item["current_value"]:,.0f}'
+                        f'${item["current_value"]:,.2f}'
                         if item.get("estimated_value") is not None
                         else "Not valued"
                     ).classes(
                         "valuation-current-value-cell text-sm font-semibold"
-                    )
+                    ).mark(f'valuation-value-{item["public_id"]}')
                     ui.label(item["last_updated"]).classes(
                         "valuation-updated-cell text-sm text-slate-600"
                     )
@@ -1273,6 +1273,10 @@ async def valuations_page():
                                 "text-sm"
                             )
 
+                        ui.label(
+                            "Accepting uses this estimate as the item's current value "
+                            "and replaces any manual override."
+                        ).classes("text-sm muted")
 
                         # Buttons
                         with ui.row().classes(
@@ -1284,10 +1288,7 @@ async def valuations_page():
 
                             ui.button(
                                 "Cancel",
-                                on_click=lambda:
-                                ui.notify(
-                                    "Valuation preview cancelled."
-                                ),
+                                on_click=cancel_valuation,
                             ).props(
                                 "outline "
                                 "color=grey-7 "

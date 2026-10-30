@@ -262,7 +262,15 @@ def value_by_category_card(category_data) -> None:
                 chart_options = {
                     "tooltip": {
                         "trigger": "item",
-                        "formatter": "{b}: ${c} ({d}%)",
+                        ":formatter": """(params) => {
+                            const name = String(params.name).replace(/[&<>"']/g,
+                                c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;',
+                                       '"': '&quot;', "'": '&#39;'}[c]));
+                            const amount = Number(params.value).toLocaleString('en-US', {
+                                minimumFractionDigits: 2, maximumFractionDigits: 2
+                            });
+                            return name + ': $' + amount + ' (' + params.percent + '%)';
+                        }""",
                     },
                     "series": [
                         {
@@ -285,7 +293,7 @@ def value_by_category_card(category_data) -> None:
                 
                 # Center Text Overlay showing the active sum dynamically
                 with ui.element('div').classes("absolute inset-0 flex flex-col items-center justify-center pointer-events-none"):
-                    ui.label(f"${active_total:,.0f}").classes("text-xl font-bold text-slate-900")
+                    ui.label(f"${active_total:,.2f}").classes("text-xl font-bold text-slate-900")
                     ui.label("Total Value").classes("text-xs text-slate-500")
 
             # Custom Legend using the exact same `colors` array
@@ -388,7 +396,7 @@ def recent_items_card(recent_items) -> None:
                     ):
 
                         ui.label(
-                            f'${item["value"]:,.0f}'
+                            f'${item["value"]:,.2f}'
                         ).classes(
                             "text-sm font-semibold"
                         )
@@ -560,7 +568,7 @@ async def dashboard_page():
             stat_card(
                 title="Estimated Value",
                 value=(
-                    f'${dashboard_data["estimated_value"]:,.0f}'
+                    f'${dashboard_data["estimated_value"]:,.2f}'
                 ),
                 icon="trending_up",
                 icon_color="text-green-600",
@@ -570,7 +578,7 @@ async def dashboard_page():
             stat_card(
                 title="Purchase Value",
                 value=(
-                    f'${dashboard_data["purchase_value"]:,.0f}'
+                    f'${dashboard_data["purchase_value"]:,.2f}'
                 ),
                 icon="sell",
                 change_text="+8% from last month",

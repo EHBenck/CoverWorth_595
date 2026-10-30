@@ -5,6 +5,7 @@ import requests
 from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from utilities.attachments import attachment_url
+from utilities.location_management import LocationControls, LocationApiError, _location_request
 from backend_client import (
     BACKEND_URL,
     authenticated_session,
@@ -15,8 +16,7 @@ from backend_client import (
 
 # COVERWORTH - INVENTORY PAGE
 # ------------------------------------------------------------
-# Mock data is used for now.
-# TODO replace with live backend data.
+# Item and location data come from the authenticated inventory API.
 
 
 
@@ -232,19 +232,15 @@ def fetch_inventory_items(
         normalized_items = []
 
         for item in items:
-            estimated_value = item.get("current_estimated_amount")
-
-            if estimated_value is None:
-                estimated_value = item.get("manual_value")
-
-            if estimated_value is None:
-                estimated_value = item.get("estimated_value")
+            # The backend owns manual/accepted/purchase precedence.
+            estimated_value = item.get("effective_value")
 
             normalized_items.append({
                 **item,
                 "name": item.get("name") or "Unnamed Item",
                 "category": item.get("category") or "Uncategorized",
                 "location": item.get("location") or "",
+                "location_id": str(item["location_id"]) if item.get("location_id") else None,
                 "estimated_value": (
                     float(estimated_value)
                     if estimated_value is not None
@@ -252,7 +248,7 @@ def fetch_inventory_items(
                 ),
                 "status": (
                     "Current"
-                    if estimated_value is not None
+                    if item.get("effective_value_source") in ("manual", "estimated")
                     else "Review"
                 ),
                 "icon": item.get("icon") or "inventory_2",
@@ -284,6 +280,16 @@ def fetch_inventory_categories(
     except requests.RequestException as error:
         print("Error fetching categories:", error)
         return []
+
+def fetch_inventory_locations(inventory_id: str, cookies: dict) -> list[dict] | None:
+    """Preload options with the page; the shared control offers retry on failure."""
+    try:
+        result, _ = _location_request(cookies, "GET", f"/api/inventory/{inventory_id}/locations/")
+        locations = result.get("locations")
+        return locations if isinstance(locations, list) else None
+    except (requests.RequestException, LocationApiError, ValueError):
+        return None
+
 
 # INVENTORY PAGE
 @ui.page("/inventory")
@@ -317,9 +323,10 @@ async def inventory_page(category: str = ""):
         ).classes("text-red-600 p-6")
         return
 
-    items, categories = await asyncio.gather(
+    items, categories, locations = await asyncio.gather(
         run.io_bound(fetch_inventory_items, inventory_id, cookies),
         run.io_bound(fetch_inventory_categories, inventory_id, cookies),
+        run.io_bound(fetch_inventory_locations, inventory_id, cookies),
     )
     loading.delete()
 
@@ -331,6 +338,7 @@ async def inventory_page(category: str = ""):
     def reload_inventory():
         state["items"] = fetch_inventory_items(inventory_id)
         state["categories"] = fetch_inventory_categories(inventory_id)
+        location_controls.refresh_options()
         inventory_rows.refresh()
 
     ui.timer(0.1, reload_inventory, once=True)
@@ -460,26 +468,30 @@ async def inventory_page(category: str = ""):
                     "filter-control w-[190px]"
                 )
 
-                # LOCATION/STATUS FILTER
-                locations = sorted({
-                    item["location"]
-                    for item in state["items"]
-                    if item.get("location")
-                })
-
+                # Location choices use persistent IDs, including equal names under different parents.
                 statuses = sorted({
                     item["status"]
                     for item in state["items"]
                     if item.get("status")
                 })
 
-                location_filter = ui.select(
-                    ["All Locations", *locations],
-                    value="All Locations",
+                async def refresh_location_items():
+                    state["items"] = await run.io_bound(
+                        fetch_inventory_items, inventory_id,
+                        dict(app.storage.user.get("auth_cookies", {})),
+                    )
+                    location_controls.refresh_options()
+                    inventory_rows.refresh()
+
+                location_controls = LocationControls(
+                    inventory_id, mode="filter", locations=locations,
                     on_change=lambda _: refresh_inventory(),
-                ).props("outlined dense").classes(
-                    "filter-control w-[190px]"
+                    on_locations_changed=refresh_location_items,
+                    filter_location_ids=lambda: {
+                        item["location_id"] for item in state["items"] if item.get("location_id")
+                    },
                 )
+                location_filter = location_controls.select
 
                 status_filter = ui.select(
                     ["All Statuses", *statuses],
@@ -545,11 +557,9 @@ async def inventory_page(category: str = ""):
 
 
                     # LOCATION
-                    if (
-                        location != "All Locations"
-                        and
-                        item["location"] != location
-                    ):
+                    if location == "unassigned" and item.get("location_id"):
+                        continue
+                    if location not in (None, "all", "unassigned") and item.get("location_id") != location:
                         continue
 
 
@@ -587,16 +597,19 @@ async def inventory_page(category: str = ""):
                         else:
                             ui.icon(item["icon"]).classes("text-2xl text-slate-600")
 
-                    ui.link(item["name"],f'/item/{item["public_id"]}',).classes(
-                        "text-sm "
-                        "font-semibold "
-                        "text-slate-900 "
-                        "no-underline"
-                    )
+                    with ui.column().classes("gap-1 min-w-0").mark(f'inventory-item-{item["public_id"]}'):
+                        ui.link(item["name"], f'/item/{item["public_id"]}').classes(
+                            "text-sm font-semibold text-slate-900 no-underline"
+                        )
+                        with ui.row().classes("gap-1 items-center flex-nowrap"):
+                            ui.icon("place").classes("text-xs text-slate-500")
+                            ui.label(item.get("location") or "Unassigned").classes(
+                                "text-xs text-slate-500 break-words"
+                            ).mark(f'item-location-{item["public_id"]}')
                     ui.label(item["category"]).classes("text-sm text-slate-700")
-                    ui.label(f'${item["estimated_value"]:,.0f}').classes(
+                    ui.label(f'${item["estimated_value"]:,.2f}').classes(
                         "text-sm font-medium"
-                    )
+                    ).mark(f'item-value-{item["public_id"]}')
 
                     if item["status"] == "Current":
                         ui.label("Current").classes("status-current")

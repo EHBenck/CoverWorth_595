@@ -228,10 +228,15 @@ class ItemWorkflowTestCase(TestCase):
         self.assertEqual(item.purchase_amount, Decimal("1200.00"))
         self.assertEqual(item.inventory.public_id, uuid.UUID(self.inventory_id))
 
-    def test_manual_value_defaults_to_purchase_amount(self):
+    def test_blank_manual_value_uses_purchase_fallback_without_creating_override(self):
         item_id = self.add_item(manual_value="").json()["item_id"]
 
-        self.assertEqual(Item.objects.get(public_id=item_id).manual_value, Decimal("1200.00"))
+        item = Item.objects.get(public_id=item_id)
+        self.assertIsNone(item.manual_value)
+        self.assertEqual(item.effective_value, Decimal("1200.00"))
+        detail = self.frontend.get(f"/api/item/{item_id}/").json()["item"]
+        self.assertEqual(detail["effective_value"], "1200.00")
+        self.assertEqual(detail["effective_value_source"], "purchase")
 
     def test_invalid_items_are_rejected_and_not_saved(self):
         cases = {

@@ -347,7 +347,7 @@ def reports_page():
 
                             with ui.column().classes("gap-0"):
 
-                                ui.label(f'${summary["estimated_value"]:,.0f}').classes(
+                                ui.label(f'${summary["estimated_value"]:,.2f}').classes(
                                     "summary-value"
                                 )
 
@@ -726,7 +726,7 @@ def reports_page():
                             ui.label(
                                 (
                                     "Estimated value: "
-                                    f'${summary["estimated_value"]:,.0f}'
+                                    f'${summary["estimated_value"]:,.2f}'
                                 )
                             ).classes("text-xs text-slate-600")
 
