@@ -1,0 +1,79 @@
+name: Regression tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch/PR cancels the older run.
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Django)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14" # match your local Python
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Fails if someone changes models.py without committing the migration.
+      - name: Check for missing migrations
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run backend tests
+        working-directory: backend
+        run: python manage.py test
+
+  frontend:
+    name: Frontend + integration (pytest)
+    runs-on: ubuntu-latest
+    # Remove this line once the suite is green, so failures block merges.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            frontend/requirements.txt
+
+      # The integration tests start a real Django server from backend/ using
+      # this same interpreter, so both sets of dependencies are needed.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -r frontend/requirements.txt
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: pytest --basetemp="$RUNNER_TEMP/pytest"
+
+      # conftest.py writes the Django server log under pytest's temp folder.
+      - name: Upload test server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-server-logs
+          path: ${{ runner.temp }}/pytest/**/server.log
+          if-no-files-found: ignore
