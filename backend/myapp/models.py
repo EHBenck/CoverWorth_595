@@ -231,6 +231,9 @@ class Location(models.Model):
         super().clean()
         self.name = self.name.strip()
 
+        if not self.name:
+            raise ValidationError({"name": "Location name is required."})
+
         if self.pk and self.parent_id == self.pk:
             raise ValidationError(
                 {"parent": "A location cannot be its own parent."}
@@ -239,6 +242,11 @@ class Location(models.Model):
         if self.parent_id and self.parent.inventory_id != self.inventory_id:
             raise ValidationError(
                 {"parent": "Parent location must belong to the same inventory."}
+            )
+
+        if self.parent_id and self.parent.archived_at is not None:
+            raise ValidationError(
+                {"parent": "Choose an active parent location."}
             )
 
         ancestor = self.parent
@@ -273,6 +281,20 @@ class Location(models.Model):
             raise ValidationError(
                 {"name": "A location with this name already exists here."}
             )
+
+    @property
+    def path(self):
+        """Human-readable ancestry, with a guard for inconsistent legacy data."""
+        parts = []
+        location = self
+        seen = set()
+        while location is not None and location.inventory_id == self.inventory_id:
+            if location.pk in seen:
+                break
+            seen.add(location.pk)
+            parts.append(location.name)
+            location = location.parent
+        return " → ".join(reversed(parts))
 
     def __str__(self):
         return self.name
@@ -395,12 +417,28 @@ class Item(models.Model):
                         "Location must belong to the same inventory as the item."
                     }
                 )
+            if self.location.archived_at is not None:
+                raise ValidationError(
+                    {"location": "Choose an active location in this inventory."}
+                )
+
+    @property
+    def effective_value_source(self):
+        if self.manual_value is not None:
+            return "manual"
+        if self.current_estimated_amount is not None:
+            return "estimated"
+        if self.purchase_amount is not None:
+            return "purchase"
+        return None
 
     @property
     def effective_value(self):
-        if self.manual_value is not None:
-            return self.manual_value
-        return self.current_estimated_amount
+        return {
+            "manual": self.manual_value,
+            "estimated": self.current_estimated_amount,
+            "purchase": self.purchase_amount,
+        }.get(self.effective_value_source)
 
     def __str__(self):
         return self.name

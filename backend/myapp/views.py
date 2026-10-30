@@ -23,7 +23,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 
 from myapp.forms import ItemForm
-from myapp.models import Inventory, Item, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
+from myapp.models import Inventory, Item, Location, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
 
 
 from inventory_manager.pipeline.ebay_client import search_ebay
@@ -770,6 +770,232 @@ def dashboard_summary(request):
     return JsonResponse(payload)
 
 
+def location_payload(location):
+    return {
+        "public_id": str(location.public_id),
+        "name": location.name,
+        "description": location.description,
+        "parent_id": str(location.parent.public_id) if location.parent_id else None,
+        "path": location.path,
+    }
+
+
+def _location_options(inventory):
+    locations = Location.objects.filter(
+        inventory=inventory,
+        archived_at__isnull=True,
+    ).select_related("parent")
+    return sorted(
+        (location_payload(location) for location in locations),
+        key=lambda location: (location["path"].casefold(), location["public_id"]),
+    )
+
+
+def _field_validation_response(error):
+    errors = (
+        error.message_dict
+        if hasattr(error, "message_dict")
+        else {"non_field_errors": error.messages}
+    )
+    first_error = next(iter(errors.values()))[0]
+    return JsonResponse({"success": False, "error": first_error, "errors": errors}, status=400)
+
+
+def _json_object(request):
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ValidationError("Invalid JSON request body.")
+    if not isinstance(data, dict):
+        raise ValidationError("Expected a JSON object.")
+    return data
+
+
+def _item_request_data(request):
+    data = _json_object(request) if request.content_type == "application/json" else request.POST
+    location = data.get("location")
+    if location is not None and not isinstance(location, str):
+        raise ValidationError({"location": "Choose an active location in this inventory."})
+    return data
+
+
+def _save_item_form_response(request, inventory, item=None):
+    data = _item_request_data(request)
+    editing = item is not None
+    with transaction.atomic():
+        _lock_inventory_owner(request.user)
+        inventory = get_object_or_404(
+            Inventory, pk=inventory.pk, owner=request.user, archived_at__isnull=True,
+        )
+        if editing:
+            item = get_object_or_404(
+                Item.objects.select_related("location"),
+                pk=item.pk, inventory=inventory, archived_at__isnull=True,
+            )
+        form = ItemForm(inventory, data, instance=item)
+        if not form.is_valid():
+            return JsonResponse({
+                'success': False,
+                'errors': {field: error[0] for field, error in form.errors.items()},
+            }, status=400)
+        item = form.save()
+        action = "updated" if editing else "added"
+        return JsonResponse({
+            'success': True,
+            'message': f"Item '{item.name}' {action} successfully!",
+            'item_id': str(item.public_id),
+        })
+
+
+def _update_location_fields(location, data):
+    unknown_fields = set(data) - {"name", "description", "parent_id"}
+    if unknown_fields:
+        raise ValidationError({
+            field: "This field cannot be set on a location."
+            for field in sorted(unknown_fields)
+        })
+    for field in ("name", "description"):
+        value = data.get(field, getattr(location, field))
+        if not isinstance(value, str):
+            raise ValidationError({field: "Enter text for this field."})
+        setattr(location, field, value.strip())
+
+    if "parent_id" in data:
+        parent_id = data["parent_id"]
+        if parent_id is None:
+            location.parent = None
+        else:
+            try:
+                if not isinstance(parent_id, str):
+                    raise ValueError
+                parent_uuid = UUID(parent_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError({"parent_id": "Choose an active parent location in this inventory."})
+            parent = Location.objects.filter(
+                public_id=parent_uuid,
+                inventory=location.inventory,
+                archived_at__isnull=True,
+            ).first()
+            if parent is None:
+                raise ValidationError({"parent_id": "Choose an active parent location in this inventory."})
+            location.parent = parent
+
+    try:
+        location.full_clean()
+    except ValidationError as error:
+        errors = error.message_dict if hasattr(error, "message_dict") else {"non_field_errors": error.messages}
+        if "parent" in errors:
+            errors["parent_id"] = errors.pop("parent")
+        raise ValidationError(errors) from error
+
+
+@require_http_methods(["GET", "POST"])
+def location_list_api(request, inventory_id):
+    """List or create active locations within one owned, active inventory."""
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        if request.method == "GET":
+            inventory = get_object_or_404(
+                Inventory, public_id=inventory_id,
+                owner=request.user, archived_at__isnull=True,
+            )
+            return JsonResponse({
+                "success": True,
+                "inventory": {"public_id": str(inventory.public_id), "name": inventory.name},
+                "locations": _location_options(inventory),
+            })
+
+        data = _json_object(request)
+        with transaction.atomic():
+            # The same owner lock protects parent changes, archive checks, and
+            # item assignment so a concurrent save cannot bypass those checks.
+            _lock_inventory_owner(request.user)
+            inventory = get_object_or_404(
+                Inventory, public_id=inventory_id,
+                owner=request.user, archived_at__isnull=True,
+            )
+            location = Location(inventory=inventory)
+            _update_location_fields(location, data)
+            location.save()
+            payload = location_payload(location)
+        return JsonResponse({"success": True, "location": payload}, status=201)
+    except Http404:
+        return JsonResponse({"success": False, "error": "Inventory not found."}, status=404)
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except IntegrityError:
+        return JsonResponse({"success": False, "error": "A location with this name already exists here."}, status=409)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+
+
+@require_http_methods(["PATCH", "DELETE"])
+def location_detail_api(request, location_id):
+    """Edit a location or archive an empty location without moving belongings."""
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = _json_object(request) if request.method == "PATCH" else None
+        with transaction.atomic():
+            _lock_inventory_owner(request.user)
+            location = get_object_or_404(
+                Location.objects.select_related("inventory", "parent"),
+                public_id=location_id,
+                inventory__owner=request.user,
+                inventory__archived_at__isnull=True,
+                archived_at__isnull=True,
+            )
+            if request.method == "DELETE":
+                if location.sub_locations.filter(archived_at__isnull=True).exists():
+                    raise ValidationError("Move or archive this location's child locations before archiving it.")
+                if location.items.filter(archived_at__isnull=True).exists():
+                    raise ValidationError("Move or unassign the items in this location before archiving it.")
+                location.archived_at = timezone.now()
+                location.save(update_fields=["archived_at", "updated_at"])
+                return JsonResponse({"success": True, "message": "Location archived."})
+
+            _update_location_fields(location, data)
+            location.save()
+            payload = location_payload(location)
+        return JsonResponse({"success": True, "location": payload})
+    except Http404:
+        return JsonResponse({"success": False, "error": "Location not found."}, status=404)
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except IntegrityError:
+        return JsonResponse({"success": False, "error": "A location with this name already exists here."}, status=409)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+
+
+def _filter_items_by_location(items, inventory, value):
+    if not value:
+        return items
+    if value == "unassigned":
+        return items.filter(location__isnull=True)
+    try:
+        location_id = UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        raise ValidationError({"location": "Choose an active location in this inventory."})
+    location = Location.objects.filter(
+        public_id=location_id, inventory=inventory, archived_at__isnull=True,
+    ).first()
+    if location is None:
+        raise ValidationError({"location": "Choose an active location in this inventory."})
+    return items.filter(location=location)
+
+
 def item_list(request):
     if not request.user.is_authenticated:
         return JsonResponse(
@@ -793,6 +1019,11 @@ def item_list(request):
         .order_by("-updated_at")
     )
 
+    try:
+        items = _filter_items_by_location(items, active_inventory, request.GET.get("location"))
+    except ValidationError as error:
+        return _field_validation_response(error)
+
     payload = {
         "items": [
             {
@@ -805,10 +1036,11 @@ def item_list(request):
                     else None
                 ),
                 "location": (
-                    item.location.name
+                    item.location.path
                     if item.location
                     else None
                 ),
+                "location_id": str(item.location.public_id) if item.location_id else None,
                 "quantity": item.quantity,
                 "condition": item.condition,
                 "purchase_value": (
@@ -821,6 +1053,12 @@ def item_list(request):
                     if item.effective_value is not None
                     else None
                 ),
+                "effective_value": (
+                    str(item.effective_value)
+                    if item.effective_value is not None
+                    else None
+                ),
+                "effective_value_source": item.effective_value_source,
                 "updated_at": item.updated_at.isoformat(),
                 "primary_photo_url": _primary_photo_url(item),
             }
@@ -833,7 +1071,11 @@ def item_list(request):
 @require_http_methods(["GET", "POST"])
 def add_item_api(request, inventory_id):
     """API endpoint for adding a new item to an inventory"""
-    if not request.user.is_authenticated:
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
@@ -860,41 +1102,21 @@ def add_item_api(request, inventory_id):
                     'name': inventory.name,
                 },
                 'categories': list(categories),
+                'locations': _location_options(inventory),
             })
         
         if request.method == 'POST':
-            # Parse form data from NiceGUI
-            try:
-                data = request.POST
-            except:
-                data = json.loads(request.body)
-            
-            # Create form with data
-            form = ItemForm(inventory, data)
-            
-            if form.is_valid():
-                item = form.save(commit=False)
-                item.inventory = inventory
-                item.save()
-                
-                return JsonResponse({
-                    'success': True,
-                    'message': f"Item '{item.name}' added successfully!",
-                    'item_id': str(item.public_id),
-                })
-            else:
-                # Return form errors
-                errors = {field: error[0] for field, error in form.errors.items()}
-                return JsonResponse({
-                    'success': False,
-                    'errors': errors,
-                }, status=400)
+            return _save_item_form_response(request, inventory)
     
     except Http404:
         return JsonResponse({
             'success': False,
             'error': 'Not found.',
         }, status=404)
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -904,7 +1126,11 @@ def add_item_api(request, inventory_id):
 @require_http_methods(["GET", "POST", "DELETE"])
 def edit_item_api(request, item_id):
     """API endpoint for editing an existing item"""
-    if not request.user.is_authenticated:
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
         return JsonResponse({"error": "Authentication required."}, status=401)
 
     try:
@@ -939,6 +1165,8 @@ def edit_item_api(request, item_id):
                     'name': item.name,
                     'inventory_id': str(item.inventory.public_id),  # <--- Add this line here!
                     'category_id': item.category.id if item.category else None,
+                    'location_id': str(item.location.public_id) if item.location_id else None,
+                    'location': item.location.path if item.location_id else None,
                     'description': item.description,
                     'brand': item.brand,
                     'model_number': item.model_number,
@@ -948,36 +1176,17 @@ def edit_item_api(request, item_id):
                     'purchase_date': item.purchase_date.isoformat() if item.purchase_date else None,
                     'purchase_amount': str(item.purchase_amount) if item.purchase_amount is not None else None,
                     'manual_value': str(item.manual_value) if item.manual_value is not None else None,
+                    'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount is not None else None,
+                    'effective_value': str(item.effective_value) if item.effective_value is not None else None,
+                    'effective_value_source': item.effective_value_source,
                     'notes': item.notes,
                 },
                 'categories': list(categories),
+                'locations': _location_options(item.inventory),
             })
         
         if request.method == 'POST':
-            # Parse form data from NiceGUI
-            try:
-                data = request.POST
-            except:
-                data = json.loads(request.body)
-            
-            # Create form with data and instance
-            form = ItemForm(item.inventory, data, instance=item)
-            
-            if form.is_valid():
-                form.save()
-                
-                return JsonResponse({
-                    'success': True,
-                    'message': f"Item '{item.name}' updated successfully!",
-                    'item_id': str(item.public_id),
-                })
-            else:
-                # Return form errors
-                errors = {field: error[0] for field, error in form.errors.items()}
-                return JsonResponse({
-                    'success': False,
-                    'errors': errors,
-                }, status=400)
+            return _save_item_form_response(request, item.inventory, item)
 
         if request.method == 'DELETE':
             # Deleting an archived item turns it into a deleted one.
@@ -995,6 +1204,10 @@ def edit_item_api(request, item_id):
             'success': False,
             'error': 'Not found.',
         }, status=404)
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -1065,7 +1278,16 @@ def inventory_detail_api(request, inventory_id):
             items = inventory.items.filter(is_archived=True)
         else:
             items = inventory.items.filter(archived_at__isnull=True)
-        items = items.select_related('category', 'location').order_by('-updated_at')
+
+        items = items.select_related(
+            'category', 'location'
+        ).order_by('-updated_at')
+
+        items = _filter_items_by_location(
+            items,
+            inventory,
+            request.GET.get('location'),
+        )
 
         items_data = []
         for item in items:
@@ -1078,11 +1300,14 @@ def inventory_detail_api(request, inventory_id):
                 'public_id': str(item.public_id),
                 'name': item.name,
                 'category': item.category.name if item.category else 'Uncategorized',
-                'location': item.location.name if item.location else None,
+                'location': item.location.path if item.location else None,
+                'location_id': str(item.location.public_id) if item.location_id else None,
                 'condition': item.get_condition_display(),
                 'purchase_amount': str(item.purchase_amount) if item.purchase_amount is not None else None,
-                'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount else None,
+                'current_estimated_amount': str(item.current_estimated_amount) if item.current_estimated_amount is not None else None,
                 'manual_value': str(item.manual_value) if item.manual_value is not None else None,
+                'effective_value': str(item.effective_value) if item.effective_value is not None else None,
+                'effective_value_source': item.effective_value_source,
                 'primary_photo_url': _attachment_file_url(primary_photo) if primary_photo and primary_photo.file else None,
             })
 
@@ -1101,6 +1326,8 @@ def inventory_detail_api(request, inventory_id):
             'success': False,
             'error': 'Not found.',
         }, status=404)
+    except ValidationError as error:
+        return _field_validation_response(error)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -1142,10 +1369,11 @@ def item_detail_api(request, item_id):
                         else "Uncategorized"
                     ),
                     "location": (
-                        item.location.name
+                        item.location.path
                         if item.location
                         else None
                     ),
+                    "location_id": str(item.location.public_id) if item.location_id else None,
                     "description": item.description,
                     "brand": item.brand,
                     "model_number": item.model_number,
@@ -1178,6 +1406,7 @@ def item_detail_api(request, item_id):
                         if item.effective_value is not None
                         else None
                     ),
+                    "effective_value_source": item.effective_value_source,
                     "valuation_date": (
                         item.valuation_date.isoformat()
                         if item.valuation_date
@@ -1517,7 +1746,11 @@ def item_valuation_history_api(request, item_id):
 
 @require_POST
 def accept_valuation_api(request, item_id):
-    if not request.user.is_authenticated:
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
         return JsonResponse(
             {"error": "Authentication required."},
             status=401,
@@ -1546,48 +1779,62 @@ def accept_valuation_api(request, item_id):
             status=400,
         )
 
-    item = Item.objects.filter(
-        public_id=item_id,
-        inventory__owner=request.user,
-        inventory__archived_at__isnull=True,
-        archived_at__isnull=True,
-    ).first()
+    try:
+        with transaction.atomic():
+            # Match item-form writes and inventory archive: re-read only after
+            # taking the owner lock so acceptance does not use stale values.
+            _lock_inventory_owner(request.user)
+            item = Item.objects.filter(
+                public_id=item_id,
+                inventory__owner=request.user,
+                inventory__archived_at__isnull=True,
+                archived_at__isnull=True,
+            ).first()
 
-    if item is None:
-        return JsonResponse({"error": "Item not found."}, status=404)
+            if item is None:
+                return JsonResponse({"error": "Item not found."}, status=404)
 
-    valuation_run = ValuationRun.objects.filter(
-        public_id=run_id,
-        item=item,
-        status="success",
-    ).first()
+            valuation_run = ValuationRun.objects.filter(
+                public_id=run_id,
+                item=item,
+                status="success",
+            ).first()
 
-    if valuation_run is None:
-        return JsonResponse({"error": "Valuation not found."}, status=404)
+            if valuation_run is None:
+                return JsonResponse({"error": "Valuation not found."}, status=404)
 
-    if valuation_run.estimated_amount is None:
-        return JsonResponse(
-            {"error": "This valuation has no estimate."},
-            status=400,
-        )
+            if valuation_run.estimated_amount is None:
+                return JsonResponse(
+                    {"error": "This valuation has no estimate."},
+                    status=400,
+                )
 
-    item.current_estimated_amount = valuation_run.estimated_amount
-    item.valuation_date = timezone.now()
-    item.save(
-        update_fields=[
-            "current_estimated_amount",
-            "valuation_date",
-            "updated_at",
-        ]
-    )
+            # Accept is an explicit choice to use this estimate instead of the
+            # previous manual override, including defaults saved by older clients.
+            item.current_estimated_amount = valuation_run.estimated_amount
+            item.manual_value = None
+            item.valuation_date = timezone.now()
+            item.save(
+                update_fields=[
+                    "current_estimated_amount",
+                    "manual_value",
+                    "valuation_date",
+                    "updated_at",
+                ]
+            )
 
-    return JsonResponse({
-        "success": True,
-        "item_id": str(item.public_id),
-        "estimated_value": float(item.current_estimated_amount),
-        "valuation_run_id": str(valuation_run.public_id),
-        "valuation_date": item.valuation_date.isoformat(),
-    })
+            return JsonResponse({
+                "success": True,
+                "item_id": str(item.public_id),
+                "estimated_value": float(item.effective_value),
+                "effective_value": str(item.effective_value),
+                "effective_value_source": item.effective_value_source,
+                "manual_value": None,
+                "valuation_run_id": str(valuation_run.public_id),
+                "valuation_date": item.valuation_date.isoformat(),
+            })
+    except OperationalError as error:
+        return _inventory_busy_response(error)
 
 
 def category_payload(category):

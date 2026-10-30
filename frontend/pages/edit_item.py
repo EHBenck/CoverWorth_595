@@ -8,6 +8,7 @@ from nicegui import app, ui
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
+from utilities.location_management import LocationControls, _sign_in_again
 
 
 ui.add_css(
@@ -106,6 +107,7 @@ async def load_item_data(item_id: str) -> dict:
             return {
                 "item": data.get("item", {}),
                 "categories": data.get("categories", []),
+                "locations": data.get("locations"),
             }
 
         return {"item": {}, "categories": []}
@@ -246,6 +248,13 @@ async def edit_item_page(item_id: str):
 
                     category_error = ui.label().classes("field-error hidden")
 
+                    location_controls = LocationControls(
+                        item["inventory_id"], locations=data.get("locations"),
+                        value=item.get("location_id"), current_path=item.get("location") or "",
+                    )
+                    location_error = ui.label().classes("field-error").props("role=alert").mark("item-location-error")
+                    location_error.visible = False
+
                     description_input = ui.textarea(
                         label="Description",
                         value=item.get("description") or "",
@@ -296,7 +305,7 @@ async def edit_item_page(item_id: str):
                         value=item.get("quantity") if item.get("quantity") is not None else 1,
                         min=1,
                         step=1,
-                    ).props("outlined min=1").classes(
+                    ).props("outlined").classes(
                         "form-control w-full max-w-[220px]"
                     )
                     quantity_error = ui.label().classes("field-error")
@@ -331,7 +340,9 @@ async def edit_item_page(item_id: str):
                             ),
                             min=0,
                             step=0.01,
-                        ).props("outlined min=0").classes(
+                            precision=2,
+                            format="%.2f",
+                        ).props("outlined").classes(
                             "form-control w-full"
                         )
 
@@ -344,7 +355,9 @@ async def edit_item_page(item_id: str):
                             ),
                             min=0,
                             step=0.01,
-                        ).props("outlined min=0").classes(
+                            precision=2,
+                            format="%.2f",
+                        ).props("outlined").classes(
                             "form-control w-full"
                         )
 
@@ -353,8 +366,9 @@ async def edit_item_page(item_id: str):
                         amount_error = ui.label().classes("field-error hidden")
 
                     ui.label(
-                        "Update the manual value only if you want to override "
-                        "the item's estimated or initial value."
+                        "Enter a manual value to override the item's current value. "
+                        "Clear it to use an accepted estimate, or the purchase price "
+                        "if no estimate has been accepted."
                     ).classes("required-note")
 
                 # Notes
@@ -447,9 +461,10 @@ async def edit_item_page(item_id: str):
                     async def handle_file_upload(e):
                         try:
                             session = authenticated_session()
-                            file_bytes = await e.file.read()
-                            name = e.file.name
-                            content_type = e.file.content_type or "application/octet-stream"
+                            # NiceGUI 2.x provides a binary stream on the upload event.
+                            file_bytes = e.content.read()
+                            name = e.name
+                            content_type = e.type or "application/octet-stream"
                             files = {"file": (name, file_bytes, content_type)}
                             data = {
                                 "file_type": "receipt"
@@ -510,6 +525,7 @@ async def edit_item_page(item_id: str):
         # Submission
         async def submit_form():
             success_label.visible = False
+            error_label.classes(remove="hidden")
             error_label.visible = False
 
             for label in [
@@ -518,12 +534,19 @@ async def edit_item_page(item_id: str):
                 date_error,
                 amount_error,
                 quantity_error,
+                location_error,
             ]:
+                label.classes(remove="hidden")
                 label.visible = False
 
             # Clear previous field error styling.
             for field in [purchase_date_input, purchase_amount_input, quantity_input]:
                 field.props(remove="error")
+
+            if not location_controls.ready:
+                location_error.text = "Locations are unavailable. Retry loading locations before saving."
+                location_error.visible = True
+                return
 
             name = (name_input.value or "").strip()
             category = category_select.value
@@ -603,6 +626,7 @@ async def edit_item_page(item_id: str):
             form_data = {
                 "name": name,
                 "category": category,
+                "location": location_controls.value,
                 "purchase_date": date_text,
                 "purchase_amount": purchase_amount,
                 "description": description_input.value or "",
@@ -627,6 +651,10 @@ async def edit_item_page(item_id: str):
                     timeout=10,
                 )
 
+                if response.status_code == 401:
+                    _sign_in_again()
+                    return
+
                 try:
                     response_data = response.json()
                 except ValueError:
@@ -645,6 +673,7 @@ async def edit_item_page(item_id: str):
                 field_labels = {
                     "name": name_error,
                     "category": category_error,
+                    "location": location_error,
                     "purchase_date": date_error,
                     "purchase_amount": amount_error,
                     "quantity": quantity_error,

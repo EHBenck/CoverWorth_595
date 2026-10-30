@@ -1,6 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Item, Category
+from .models import Item, Category, Location
 
 
 class ItemForm(forms.ModelForm):
@@ -10,12 +10,22 @@ class ItemForm(forms.ModelForm):
         required=True,
         widget=forms.NumberInput(attrs={'min': 1}),
     )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        to_field_name='public_id',
+        required=False,
+        empty_label='Unassigned',
+        error_messages={
+            'invalid_choice': 'Choose an active location in this inventory.',
+        },
+    )
 
     class Meta:
         model = Item
         fields = [
             'name',
             'category',
+            'location',
             'description',
             'brand',
             'model_number',
@@ -46,6 +56,30 @@ class ItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.inventory = inventory
         self.instance.inventory = inventory
+
+        self.fields['location'].queryset = Location.objects.filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).select_related('parent').order_by('name')
+        self.fields['location'].label_from_instance = lambda location: location.path
+        if self.instance.pk:
+            location_value = (
+                str(self.instance.location.public_id)
+                if self.instance.location_id else ''
+            )
+            self.initial['location'] = location_value
+            # Existing clients omit this optional field. Preserve their saved
+            # assignment; an explicit empty string or JSON null clears it.
+            location_key = self.add_prefix('location')
+            if self.is_bound and location_key not in self.data:
+                self.data = self.data.copy()
+                self.data[location_key] = location_value
+            # Omission is an unrelated edit; blank/null explicitly clears an
+            # override. Preserve values from clients which omit this field.
+            manual_key = self.add_prefix('manual_value')
+            if self.is_bound and manual_key not in self.data:
+                self.data = self.data.copy()
+                self.data[manual_key] = self.instance.manual_value
         
         # Filter categories to only those in this inventory
         self.fields['category'].queryset = Category.objects.filter(
@@ -101,10 +135,8 @@ class ItemForm(forms.ModelForm):
         if manual_value and manual_value < 0:
             raise ValidationError("Manual value cannot be negative.")
             
-        # If manual valuation is left blank, default it to the purchase amount
-        if manual_value is None and purchase_amount is not None:
-            cleaned_data['manual_value'] = purchase_amount
-            self.instance.manual_value = purchase_amount
+        # A blank manual value means no explicit override. Purchase price is
+        # only a display fallback in Item.effective_value, never a manual value.
         
         return cleaned_data
     

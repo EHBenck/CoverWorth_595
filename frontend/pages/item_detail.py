@@ -448,18 +448,13 @@ async def item_detail_page(
 
     effective_value = item.get("effective_value")
 
-    current_estimate = item.get("current_estimated_amount")
-
     manual_value = item.get("manual_value")
 
-    if current_estimate is not None:
-        value_source = "Current estimated value"
-
-    elif manual_value is not None:
-        value_source = "Manual value"
-
-    else:
-        value_source = "No current valuation"
+    value_source = {
+        "manual": "Manual value",
+        "estimated": "Accepted estimate",
+        "purchase": "Purchase price",
+    }.get(item.get("effective_value_source"), "No current valuation")
 
     # MAIN CONTENT
     # ========================================================
@@ -554,7 +549,7 @@ async def item_detail_page(
 
                         detail_field(
                             "Location",
-                            item.get("location"),
+                            item.get("location") or "Unassigned",
                         )
 
                         detail_field(
@@ -655,9 +650,9 @@ async def item_detail_page(
                             if effective_value is not None
                             else "Not valued"
                         )
-                    ).classes("value-number")
+                    ).classes("value-number").mark("current-item-value")
 
-                    ui.label(value_source).classes("value-source")
+                    ui.label(value_source).classes("value-source").mark("current-value-source")
 
                     if item.get("valuation_date"):
 

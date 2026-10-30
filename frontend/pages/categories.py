@@ -693,7 +693,7 @@ async def categories_page():
                                     ).classes("category-count")
 
                                     ui.label(
-                                        (f'${category["total_value"]:,.0f}')
+                                        (f'${category["total_value"]:,.2f}')
                                     ).classes("category-value mt-1")
 
                                     with ui.row().classes("items-center " "gap-2 mt-1"):

@@ -274,14 +274,8 @@ class Sprint4WorkflowTestCase(TemporaryMediaMixin, TestCase):
         self.assertEqual(item.valuation_runs.count(), 1)
         self.assertEqual(item.attachments.count(), 2)
 
-    @unittest.expectedFailure
     def test_accepted_valuation_becomes_the_displayed_value(self):
-        """Known bug, not fixed yet.
-
-        Add Item fills a blank manual value with the purchase price, and
-        manual value always wins over the estimate, so an accepted valuation
-        never reaches the dashboard or the item page.
-        """
+        """Explicit acceptance changes the value shown by item and dashboard reads."""
         frontend = Sprint4Client()
         frontend.register("alice")
         inventory_id = frontend.active_inventory_id()
@@ -292,7 +286,11 @@ class Sprint4WorkflowTestCase(TemporaryMediaMixin, TestCase):
             run_id = frontend.run_valuation(item_id).json()["valuation_run_id"]
         frontend.accept_valuation(item_id, run_id)
 
-        self.assertEqual(frontend.get(f"/api/item/{item_id}/").json()["item"]["effective_value"], "247.00")
+        detail = frontend.get(f"/api/item/{item_id}/").json()["item"]
+        self.assertEqual(detail["effective_value"], "247.00")
+        self.assertEqual(detail["effective_value_source"], "estimated")
+        self.assertIsNone(detail["manual_value"])
+        self.assertEqual(frontend.get("/api/dashboard/").json()["summary"]["estimated_value"], 247.0)
 
 
 class UserIsolationTestCase(TemporaryMediaMixin, TestCase):

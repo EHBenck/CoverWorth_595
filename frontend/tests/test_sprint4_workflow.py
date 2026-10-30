@@ -470,18 +470,27 @@ async def test_inventory_location_filter_uses_persisted_locations(user: User, ac
     await user.open("/inventory")
     await user.should_see(kind=ui.link, content="Office camera", retries=20)
     await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
-    selector = inventory_filter(user, "All Locations")
-    assert set(selector.options) == {"All Locations", "Office", "Attic"}
+    # Locations are identified by UUID, so equal names under different parents
+    # cannot accidentally match the same filter option.
+    selector = next(iter(user.find(marker="inventory-location-filter").elements))
+    office_location = api.item(office_id).json()["item"]["location_id"]
+    attic_location = api.item(attic_id).json()["item"]["location_id"]
+    assert selector.options == {
+        "all": "All Locations",
+        "unassigned": "Unassigned",
+        office_location: "Office",
+        attic_location: "Attic",
+    }
     with user:
-        selector.value = "Office"
+        selector.value = office_location
     await user.should_see(kind=ui.link, content="Office camera", retries=20)
     await user.should_not_see(kind=ui.link, content="Attic lamp")
     with user:
-        selector.value = "Attic"
+        selector.value = attic_location
     await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
     await user.should_not_see(kind=ui.link, content="Office camera")
     with user:
-        selector.value = "All Locations"
+        selector.value = "all"
     await user.should_see(kind=ui.link, content="Office camera", retries=20)
     await user.should_see(kind=ui.link, content="Attic lamp", retries=20)
 

@@ -180,7 +180,7 @@ async def test_new_account_sees_empty_dashboard(user: User, account) -> None:
     with user:
         values = {label.text for label in user.find(kind=ui.label).elements}
     assert "0" in values
-    assert "$0" in values
+    assert "$0.00" in values
     await user.should_not_see(kind=ui.link)
 
 
@@ -195,14 +195,23 @@ async def test_add_valid_item_through_the_form(user: User, account, api) -> None
     user.find("Category *").click()
     user.find("Electronics").click()
     set_value(user, "Date Acquired *", "2026-01-15")
-    set_value(user, "Purchase Price ($) *", 1200)
+    set_value(user, "Purchase Price ($) *", 1200.50)
     user.find(kind=ui.button, content="Add Item").click()
 
     await user.should_see("Item added successfully.", retries=20)
     items = api.get("/api/items/").json()["items"]
     assert [(item["name"], item["category"], item["purchase_value"]) for item in items] == [
-        ("Laptop", "Electronics", 1200.0)
+        ("Laptop", "Electronics", 1200.50)
     ]
+
+    item_id = items[0]["public_id"]
+    detail = api.item(item_id).json()["item"]
+    assert detail["purchase_amount"] == "1200.50"
+    assert detail["effective_value"] == "1200.50"
+    # Wait for Add Item's actual redirect before checking the saved row.
+    await user.should_see(marker=f"item-value-{item_id}", content="$1,200.50", retries=20)
+    with user:
+        assert next(iter(user.find(marker=f"item-value-{item_id}").elements)).text == "$1,200.50"
 
 
 async def test_invalid_item_shows_errors_and_is_not_saved(user: User, account, api) -> None:
@@ -228,14 +237,14 @@ async def test_dashboard_lists_item_and_opens_it(user: User, account, api) -> No
         name="Laptop",
         category=category_id,
         purchase_date="2026-01-15",
-        purchase_amount="1200.00",
+        purchase_amount="1200.50",
         condition="used",
         quantity="1",
     )
     assert category["item_count"] == 0
     await sign_in(user, account)
 
-    await user.should_see("$1,200")
+    await user.should_see("$1,200.50")
     user.find(kind=ui.link, content="Laptop").click()
 
     await user.should_see("Item Information", retries=20)
@@ -286,7 +295,7 @@ async def test_items_persist_for_a_new_browser_session(create_user, account, api
     second_browser = create_user()
     await sign_in(second_browser, account)
     await second_browser.should_see("Guitar")
-    await second_browser.should_see("$450")
+    await second_browser.should_see("$450.00")
 
 
 # ------------------------------------------------------------
@@ -339,9 +348,12 @@ async def test_pages_still_render_when_backend_goes_down(user: User, account, ap
 
     await user.open(f"/add-item/{inventory_id}")
     await user.should_see("Add Item", retries=50)
+    await user.should_see("Could not load locations. Please try again.", retries=50)
+    await user.should_see(marker="retry-locations")
     user.find("Item Name *").type("Laptop")
     user.find(kind=ui.button, content="Add Item").click()
-    await user.should_see("Could not connect to the backend.", retries=50)
+    await user.should_see("Locations are unavailable. Retry loading locations before saving.", retries=50)
+    assert api.get("/api/items/").json()["items"] == []
 
 
 async def test_expired_backend_session_sends_user_back_to_login(user: User, account, api) -> None:

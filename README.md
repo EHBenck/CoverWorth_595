@@ -73,8 +73,13 @@ Backend unit and API workflow tests (each test uses a fresh test database):
 
 The tests never call eBay: valuation tests replace eBay's HTTP calls with the
 recorded listings in `backend/inventory_manager/fixtures/raw`, so no eBay
-credentials are needed. One test is an expected failure that tracks a known
-bug: an accepted valuation does not become the item's displayed value.
+credentials are needed. Regression tests cover acceptance/display consistency,
+manual overrides, purchase-price fallback, and zero values.
+
+Displayed item value uses an explicit manual override, then an accepted
+estimate, then the purchase price. A blank manual value remains blank.
+Accepting an estimate replaces the active manual override for that item;
+requesting or cancelling a preview does not change its saved value.
 
 Frontend <-> backend integration tests. These start their own Django server
 on a temporary, freshly migrated database and drive the NiceGUI pages
@@ -89,4 +94,7 @@ To check the real eBay connection by hand (needs `EBAY_CLIENT_ID` and
 `EBAY_CLIENT_SECRET` in `backend/.env`):
 
 	cd backend
-	.\.venv\Scripts\python.exe -m inventory_manager.pipeline.test_live
+	.\.venv\Scripts\python.exe manage.py shell -c "import runpy; runpy.run_module('inventory_manager.pipeline.test_live', run_name='__main__')"
+
+Using manage.py initializes Django settings, which loads backend/.env before
+the manual live check reads the eBay environment variables.
