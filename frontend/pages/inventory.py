@@ -383,10 +383,7 @@ async def inventory_page(category: str = ""):
         state["items"] = await run.io_bound(
             fetch_inventory_items, inventory_id, cookies, state["archived"]
         )
-        location_filter.set_options(
-            ["All Locations", *sorted({i["location"] for i in state["items"] if i.get("location")})],
-            value="All Locations",
-        )
+        location_controls.refresh_options()
         status_filter.set_options(
             ["All Statuses", *sorted({i["status"] for i in state["items"] if i.get("status")})],
             value="All Statuses",
@@ -538,6 +535,7 @@ async def inventory_page(category: str = ""):
                     state["items"] = await run.io_bound(
                         fetch_inventory_items, inventory_id,
                         dict(app.storage.user.get("auth_cookies", {})),
+                        archived=state["archived"],
                     )
                     location_controls.refresh_options()
                     inventory_rows.refresh()
