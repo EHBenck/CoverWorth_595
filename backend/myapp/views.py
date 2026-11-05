@@ -1147,6 +1147,15 @@ def item_list(request):
         )
 
     try:
+        items = _filter_items_by_location(
+            items,
+            active_inventory,
+            request.GET.get("location"),
+        )
+    except ValidationError as error:
+        return _field_validation_response(error)
+
+    try:
         limit = int(request.GET.get("limit", ""))
     except ValueError:
         limit = 0
