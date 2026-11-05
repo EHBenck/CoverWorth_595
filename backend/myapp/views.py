@@ -1019,6 +1019,28 @@ def item_list(request):
         .order_by("-updated_at")
     )
 
+    location_param = request.GET.get("location", "").strip()
+    if location_param == "unassigned":
+        items = items.filter(location__isnull=True)
+    elif location_param:
+        try:
+            location_id = UUID(location_param)
+        except ValueError:
+            location_id = None
+        location = None
+        if location_id is not None:
+            location = Location.objects.filter(
+                public_id=location_id,
+                inventory=active_inventory,
+                archived_at__isnull=True,
+            ).first()
+        if location is None:
+            return JsonResponse(
+                {"success": False, "errors": {"location": ["Choose a valid location."]}},
+                status=400,
+            )
+        items = items.filter(location=location)
+
     query = request.GET.get("q", "").strip()
     if query:
         items = items.filter(
@@ -1036,6 +1058,7 @@ def item_list(request):
         limit = 0
     if limit > 0:
         items = items[:min(limit, 50)]
+
 
     payload = {
         "items": [

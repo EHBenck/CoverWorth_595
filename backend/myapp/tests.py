@@ -1294,3 +1294,140 @@ class POCRegressionTests(TestCase):
         finally:
             importlib.reload(urlconf)
             clear_url_caches()
+
+
+class ItemSearchAPITests(TestCase):
+    """The q / limit parameters on /api/items/ power the global search box."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="searcher", password="secret")
+        self.client.force_login(self.user)
+
+        self.home = Inventory.objects.create(owner=self.user, name="Home")
+        self.office = Inventory.objects.create(owner=self.user, name="Office")
+
+        self.electronics = Category.objects.create(inventory=self.home, name="Electronics")
+        self.garage = Location.objects.create(inventory=self.home, name="Garage")
+
+        self.tv = Item.objects.create(
+            inventory=self.home,
+            name="LG TV",
+            category=self.electronics,
+            brand="LG",
+            model_number="OLED55C3",
+            serial_number="SN-12345",
+        )
+        self.drill = Item.objects.create(
+            inventory=self.home,
+            name="Cordless Drill",
+            location=self.garage,
+        )
+        self.sofa = Item.objects.create(inventory=self.home, name="Sofa")
+
+        # Same search term, but in a different inventory of the same user.
+        self.office_tv = Item.objects.create(inventory=self.office, name="Office TV")
+
+        # Same search term, but owned by someone else entirely.
+        self.stranger = User.objects.create_user(username="stranger", password="secret")
+        stranger_inventory = Inventory.objects.create(owner=self.stranger, name="Theirs")
+        Item.objects.create(inventory=stranger_inventory, name="Stranger TV")
+
+    def search(self, **params):
+        response = self.client.get("/api/items/", params)
+        self.assertEqual(response.status_code, 200)
+        return [item["name"] for item in response.json()["items"]]
+
+    def select_inventory(self, inventory):
+        response = self.client.post(
+            "/api/inventories/select/",
+            data=json.dumps({"inventory_id": str(inventory.public_id)}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+    # --- matching -------------------------------------------------------
+
+    def test_matches_name_case_insensitively(self):
+        self.assertEqual(self.search(q="lg tv"), ["LG TV"])
+        self.assertEqual(self.search(q="DRILL"), ["Cordless Drill"])
+
+    def test_matches_partial_name(self):
+        self.assertEqual(self.search(q="cord"), ["Cordless Drill"])
+
+    def test_matches_category_name(self):
+        self.assertEqual(self.search(q="electron"), ["LG TV"])
+
+    def test_matches_location_name(self):
+        self.assertEqual(self.search(q="garage"), ["Cordless Drill"])
+
+    def test_matches_brand_model_and_serial_number(self):
+        self.assertEqual(self.search(q="oled55"), ["LG TV"])
+        self.assertEqual(self.search(q="sn-123"), ["LG TV"])
+        # "LG" appears in both the name and the brand; it must still be one row.
+        self.assertEqual(self.search(q="lg"), ["LG TV"])
+
+    def test_no_match_returns_empty_list(self):
+        self.assertEqual(self.search(q="nothing-matches-this"), [])
+
+    def test_surrounding_whitespace_is_ignored(self):
+        self.assertEqual(self.search(q="  sofa  "), ["Sofa"])
+
+    def test_blank_query_returns_all_active_items(self):
+        self.assertCountEqual(
+            self.search(q="   "),
+            ["LG TV", "Cordless Drill", "Sofa"],
+        )
+
+    def test_like_wildcards_are_treated_literally(self):
+        self.assertEqual(self.search(q="%"), [])
+        self.assertEqual(self.search(q="_"), [])
+
+    # --- scoping --------------------------------------------------------
+
+    def test_search_is_limited_to_the_active_inventory(self):
+        self.assertEqual(self.search(q="tv"), ["LG TV"])
+
+    def test_search_follows_inventory_switching(self):
+        self.select_inventory(self.office)
+        self.assertEqual(self.search(q="tv"), ["Office TV"])
+
+    def test_other_users_items_are_never_returned(self):
+        self.assertNotIn("Stranger TV", self.search(q="tv"))
+        self.select_inventory(self.office)
+        self.assertNotIn("Stranger TV", self.search(q="tv"))
+
+    def test_archived_items_are_excluded(self):
+        Item.objects.filter(pk=self.tv.pk).update(
+            archived_at=timezone.now(),
+            is_archived=True,
+        )
+        self.assertEqual(self.search(q="tv"), [])
+
+    def test_search_requires_authentication(self):
+        self.client.logout()
+        response = self.client.get("/api/items/", {"q": "tv"})
+        self.assertEqual(response.status_code, 401)
+
+    # --- limit ----------------------------------------------------------
+
+    def test_limit_caps_the_number_of_results(self):
+        self.assertEqual(len(self.search(q="", limit=2)), 2)
+
+    def test_invalid_or_non_positive_limit_is_ignored(self):
+        for bad_limit in ("abc", "0", "-5", ""):
+            with self.subTest(limit=bad_limit):
+                self.assertEqual(len(self.search(q="", limit=bad_limit)), 3)
+
+    def test_limit_is_capped_at_fifty(self):
+        for index in range(55):
+            Item.objects.create(inventory=self.home, name=f"Bulk item {index}")
+        self.assertEqual(len(self.search(q="bulk", limit=500)), 50)
+
+    def test_search_results_include_fields_the_dropdown_uses(self):
+        response = self.client.get("/api/items/", {"q": "lg tv", "limit": 8})
+        item = response.json()["items"][0]
+        for key in ("public_id", "name", "category", "location", "primary_photo_url"):
+            self.assertIn(key, item)
+        self.assertEqual(item["category"], "Electronics")
+        self.assertIsNone(item["location"])
+        self.assertIsNone(item["primary_photo_url"])
