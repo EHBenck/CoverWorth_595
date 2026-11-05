@@ -9,6 +9,7 @@ from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
 from utilities.location_management import LocationControls, _sign_in_again
+from utilities.uploads import read_upload
 
 
 ui.add_css(
@@ -461,10 +462,8 @@ async def edit_item_page(item_id: str):
                     async def handle_file_upload(e):
                         try:
                             session = authenticated_session()
-                            # NiceGUI 2.x provides a binary stream on the upload event.
-                            file_bytes = e.content.read()
-                            name = e.name
-                            content_type = e.type or "application/octet-stream"
+                            file_bytes, name, content_type = await read_upload(e)
+                            content_type = content_type or "application/octet-stream"
                             files = {"file": (name, file_bytes, content_type)}
                             data = {
                                 "file_type": "receipt"

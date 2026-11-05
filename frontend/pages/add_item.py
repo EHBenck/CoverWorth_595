@@ -10,6 +10,7 @@ from backend_client import (
 )
 from utilities.nav_wrapper import build_app_shell
 from utilities.location_management import LocationControls, _sign_in_again
+from utilities.uploads import read_upload
 
 ui.add_css(
     """
@@ -533,10 +534,8 @@ async def add_item_page(
 
                     async def photo_selected(e):
                         nonlocal uploaded_file, uploaded_filename, uploaded_content_type
-                        # NiceGUI 2.x provides a binary stream on the upload event.
-                        uploaded_file = e.content.read()
-                        uploaded_filename = e.name
-                        uploaded_content_type = e.type or "image/jpeg"
+                        uploaded_file, uploaded_filename, content_type = await read_upload(e)
+                        uploaded_content_type = content_type or "image/jpeg"
                         ui.notify(
                             f"Photo '{uploaded_filename}' selected. It will upload when you add the item.",
                             type="positive",

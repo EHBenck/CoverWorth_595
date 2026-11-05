@@ -1019,10 +1019,23 @@ def item_list(request):
         .order_by("-updated_at")
     )
 
+    query = request.GET.get("q", "").strip()
+    if query:
+        items = items.filter(
+            Q(name__icontains=query)
+            | Q(brand__icontains=query)
+            | Q(model_number__icontains=query)
+            | Q(serial_number__icontains=query)
+            | Q(category__name__icontains=query)
+            | Q(location__name__icontains=query)
+        )
+
     try:
-        items = _filter_items_by_location(items, active_inventory, request.GET.get("location"))
-    except ValidationError as error:
-        return _field_validation_response(error)
+        limit = int(request.GET.get("limit", ""))
+    except ValueError:
+        limit = 0
+    if limit > 0:
+        items = items[:min(limit, 50)]
 
     payload = {
         "items": [
