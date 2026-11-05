@@ -7,6 +7,7 @@ call only records the run config and does not start a server.
 """
 
 import importlib
+import os
 
 from nicegui import ui
 
@@ -48,4 +49,6 @@ for module in PAGE_MODULES:
 
 register_attachment_routes()
 
-ui.run(reload=False)
+
+if "PYTEST_CURRENT_TEST" in os.environ:
+    ui.run(reload=False, storage_secret="coverworth-test-secret")
