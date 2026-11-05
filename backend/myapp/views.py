@@ -1,3 +1,4 @@
+import csv
 import json
 import requests
 from decimal import Decimal
@@ -15,7 +16,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction, OperationalError, connection
 from django.db.models import Count, Q, F
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -24,7 +25,7 @@ from django.views.decorators.http import require_http_methods, require_POST, req
 
 from myapp.forms import ItemForm
 from myapp.models import Inventory, Item, Location, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
-
+from .utilities.constants import CSV_COLUMN_HEADERS
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
@@ -768,6 +769,121 @@ def dashboard_summary(request):
     }
 
     return JsonResponse(payload)
+
+@require_http_methods(["GET"])
+def csv_report_api(request):
+    """Generate a CSV report for the user's active inventory."""
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
+
+    # Use the currently selected inventory.
+    inventory = _active_inventory(request)
+
+    if inventory is None:
+        return JsonResponse(
+            {"error": "No active inventory found."},
+            status=404,
+        )
+
+    # REPORT OPTIONS
+    # --------------------------------------------------------
+    category_id = request.GET.get("category")
+    include_purchase_prices = request.GET.get("purchase_prices") == "1"
+    include_current_values = request.GET.get("current_values") == "1"
+    include_serial_numbers = request.GET.get("serial_numbers") == "1"
+
+    # GET INVENTORY ITEMS
+    # --------------------------------------------------------
+    items = (
+        Item.objects
+        .select_related("category", "location")
+        .filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        )
+        .order_by("category__name", "name")
+    )
+
+    # OPTIONAL CATEGORY FILTER
+    # --------------------------------------------------------
+    if category_id:
+        try:
+            category_uuid = UUID(category_id)
+        except ValueError:
+            return JsonResponse(
+                {"error": "Invalid category ID."},
+                status=400,
+            )
+
+        category = (
+            Category.objects
+            .filter(
+                public_id=category_uuid,
+                inventory=inventory,
+                archived_at__isnull=True,
+            )
+            .first()
+        )
+        if category is None:
+            return JsonResponse(
+                {"error": "Category not found."},
+                status=404,
+            )
+
+        items = items.filter(category=category)
+
+    # CREATE CSV RESPONSE
+    # --------------------------------------------------------
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        'attachment; filename="coverworth-report.csv"'
+    )
+    response.write("\ufeff")
+    writer = csv.writer(response)
+
+    # COLUMN HEADERS
+    # --------------------------------------------------------
+    headers = list(CSV_COLUMN_HEADERS)
+    if include_serial_numbers:
+        headers.extend(["Model Number", "Serial Number"])
+    if include_purchase_prices:
+        headers.extend(["Purchase Date", "Purchase Price"])
+    if include_current_values:
+        headers.append("Current Value")
+    writer.writerow(headers)
+
+    # ITEM ROWS
+    # --------------------------------------------------------
+    for item in items:
+        row = [
+            item.name,
+            item.category.name if item.category else "Uncategorized",
+            item.location.name if item.location else "",
+            item.description,
+            item.brand,
+            item.get_condition_display(),
+            item.quantity,
+        ]
+
+        if include_serial_numbers:
+            row.extend([item.model_number, item.serial_number])
+        if include_purchase_prices:
+            row.extend(
+                [
+                    item.purchase_date.isoformat() if item.purchase_date else "",
+                    item.purchase_amount if item.purchase_amount is not None else "",
+                ]
+            )
+        if include_current_values:
+            row.append(
+                item.effective_value if item.effective_value is not None else ""
+            )
+        writer.writerow(row)
+
+    return response
 
 
 def location_payload(location):
