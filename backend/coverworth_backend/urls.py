@@ -90,5 +90,6 @@ urlpatterns = [
     path("api/item/<uuid:item_id>/valuation/history/", views.item_valuation_history_api, name="item-valuation-history-api"),
     path("api/inventories/<uuid:inventory_id>/", views.update_inventory_api, name="update-inventory-api"),
     path("api/inventories/<uuid:inventory_id>/archive/", views.archive_inventory_api, name="archive-inventory-api"),
+    path("api/reports/csv/", views.csv_report_api, name="csv-report-api"),
 ]
 
