@@ -65,7 +65,7 @@ async def test_preview_and_cancel_preserve_current_value(user: User, account, ap
     assert saved["current_estimated_amount"] is None
     assert saved["effective_value"] == "799.00"
     assert saved["effective_value_source"] == "purchase"
-    click_button(user, "Cancel", index=0)
+    click_button(user, "Cancel", marker="valuation-preview-cancel")
     await user.should_see("Valuation preview cancelled.", retries=20)
     await user.should_see("No valuation available", retries=20)
     await user.should_not_see(kind=ui.button, content="Accept $247.00")
