@@ -1,8 +1,8 @@
-import csv
 import json
-import requests
 from decimal import Decimal
 from uuid import UUID
+
+import requests
 
 from django.contrib.auth import (
     authenticate,
@@ -25,7 +25,8 @@ from django.views.decorators.http import require_http_methods, require_POST, req
 
 from myapp.forms import ItemForm
 from myapp.models import Inventory, Item, Location, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
-from .utilities.constants import CSV_COLUMN_HEADERS
+from .reports.csv import build_csv_report
+from .reports.pdf import build_pdf_report
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
@@ -343,7 +344,7 @@ def _inventory_busy_response(error):
         "error": "Your inventories are being updated. Please try again.",
     }, status=409)
 
-    
+
 def _active_inventory(request):
     inventories = Inventory.objects.filter(
         owner=request.user,
@@ -798,8 +799,7 @@ def csv_report_api(request):
     # GET INVENTORY ITEMS
     # --------------------------------------------------------
     items = (
-        Item.objects
-        .select_related("category", "location")
+        Item.objects.select_related("category", "location")
         .filter(
             inventory=inventory,
             archived_at__isnull=True,
@@ -818,15 +818,11 @@ def csv_report_api(request):
                 status=400,
             )
 
-        category = (
-            Category.objects
-            .filter(
-                public_id=category_uuid,
-                inventory=inventory,
-                archived_at__isnull=True,
-            )
-            .first()
-        )
+        category = Category.objects.filter(
+            public_id=category_uuid,
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).first()
         if category is None:
             return JsonResponse(
                 {"error": "Category not found."},
@@ -835,54 +831,89 @@ def csv_report_api(request):
 
         items = items.filter(category=category)
 
-    # CREATE CSV RESPONSE
-    # --------------------------------------------------------
-    response = HttpResponse(content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = (
-        'attachment; filename="coverworth-report.csv"'
+    response = HttpResponse(
+        build_csv_report(
+            items,
+            include_purchase_prices=include_purchase_prices,
+            include_current_values=include_current_values,
+            include_serial_numbers=include_serial_numbers,
+        ),
+        content_type="text/csv; charset=utf-8",
     )
-    response.write("\ufeff")
-    writer = csv.writer(response)
+    response["Content-Disposition"] = 'attachment; filename="coverworth-report.csv"'
+    return response
 
-    # COLUMN HEADERS
-    # --------------------------------------------------------
-    headers = list(CSV_COLUMN_HEADERS)
-    if include_serial_numbers:
-        headers.extend(["Model Number", "Serial Number"])
-    if include_purchase_prices:
-        headers.extend(["Purchase Date", "Purchase Price"])
-    if include_current_values:
-        headers.append("Current Value")
-    writer.writerow(headers)
 
-    # ITEM ROWS
-    # --------------------------------------------------------
-    for item in items:
-        row = [
-            item.name,
-            item.category.name if item.category else "Uncategorized",
-            item.location.name if item.location else "",
-            item.description,
-            item.brand,
-            item.get_condition_display(),
-            item.quantity,
-        ]
+@require_http_methods(["GET"])
+def pdf_report_api(request):
+    """Generate a PDF report for the user's active inventory."""
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
 
-        if include_serial_numbers:
-            row.extend([item.model_number, item.serial_number])
-        if include_purchase_prices:
-            row.extend(
-                [
-                    item.purchase_date.isoformat() if item.purchase_date else "",
-                    item.purchase_amount if item.purchase_amount is not None else "",
-                ]
+    inventory = _active_inventory(request)
+    if inventory is None:
+        return JsonResponse(
+            {"error": "No active inventory found."},
+            status=404,
+        )
+
+    category_id = request.GET.get("category")
+    include_purchase_prices = request.GET.get("purchase_prices") == "1"
+    include_current_values = request.GET.get("current_values") == "1"
+    include_serial_numbers = request.GET.get("serial_numbers") == "1"
+    include_photos = request.GET.get("photos") == "1"
+    include_receipts = request.GET.get("receipts") == "1"
+
+    items = (
+        Item.objects.select_related("category", "location")
+        .prefetch_related("attachments")
+        .filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        )
+        .order_by("category__name", "name")
+    )
+
+    category_name = None
+    if category_id:
+        try:
+            category_uuid = UUID(category_id)
+        except ValueError:
+            return JsonResponse(
+                {"error": "Invalid category ID."},
+                status=400,
             )
-        if include_current_values:
-            row.append(
-                item.effective_value if item.effective_value is not None else ""
-            )
-        writer.writerow(row)
 
+        category = Category.objects.filter(
+            public_id=category_uuid,
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).first()
+        if category is None:
+            return JsonResponse(
+                {"error": "Category not found."},
+                status=404,
+            )
+
+        category_name = category.name
+        items = items.filter(category=category)
+
+    response = HttpResponse(
+        build_pdf_report(
+            items,
+            category_name,
+            include_purchase_prices=include_purchase_prices,
+            include_current_values=include_current_values,
+            include_serial_numbers=include_serial_numbers,
+            include_photos=include_photos,
+            include_receipts=include_receipts,
+        ),
+        content_type="application/pdf",
+    )
+    response["Content-Disposition"] = 'attachment; filename="coverworth-report.pdf"'
     return response
 
 
