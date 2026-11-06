@@ -28,16 +28,17 @@ def set_value(user: User, label: str, value) -> None:
             element.value = value
 
 
-def click_button(user: User, text: str, index: int = 0) -> None:
+def click_button(user: User, text: str, index: int = 0, marker: str | None = None) -> None:
     with user:
         buttons = [
             button
-            for button in user.find(kind=ui.button, content=text).elements
+            for button in user.find(kind=ui.button, content=text if marker is None else None, marker=marker).elements
             if button.text == text
         ]
 
     assert len(buttons) > index, (
-        f"Expected button {text!r} at index {index}, "
+        f"Expected button {text!r} at index {index}"
+        f"{f' with marker {marker!r}' if marker else ''}, "
         f"but found {len(buttons)} matching buttons."
     )
 
