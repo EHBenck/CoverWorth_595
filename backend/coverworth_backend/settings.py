@@ -14,24 +14,24 @@ import os
 from pathlib import Path
 from decouple import config, Csv
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-9@m0l6g-&k7350ic8$w7lu*h=c154&+qhfji9yg3g3e4bp3p73"
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+# Local development starts without credentials. A non-development deployment
+# must explicitly supply a secret rather than reuse the public fallback.
+DEBUG = config("DEBUG", default=True, cast=bool)
+_DEVELOPMENT_SECRET = "coverworth-development-django-key-change-before-deploy"
+SECRET_KEY = config("SECRET_KEY", default=_DEVELOPMENT_SECRET)
+if not SECRET_KEY or (not DEBUG and SECRET_KEY == _DEVELOPMENT_SECRET):
+    raise ImproperlyConfigured("Set a nonempty SECRET_KEY before disabling DEBUG.")
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
 
 
 # Application definition
@@ -77,12 +77,11 @@ TEMPLATES = [
     },
 ]
 
-# For development, explicitly allow your Vite dev server:
+# Browser origins used by the local NiceGUI development server:
 CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",
     default=(
-        "http://localhost:8080,http://127.0.0.1:8080,"
-        "http://localhost:5173,http://127.0.0.1:5173"
+        "http://localhost:8080,http://127.0.0.1:8080"
     ),
     cast=Csv(),
 )
@@ -147,8 +146,9 @@ MAILERS = {
     },
 }
 
-    # media files (item photos, recieipts attachments)
-MEDIA_URL = "media/"
+
+# Media files (item photos and receipt attachments).
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -43,6 +43,15 @@ pytest_plugins = ["nicegui.testing.user_plugin"]
 PASSWORD = "Sturdy-passphrase-42"
 
 
+def pytest_collection_modifyitems(items):
+    """Register the app after every NiceGUI reset using its supported marker."""
+    from tests import app_under_test
+
+    for item in items:
+        if item.get_closest_marker("module_under_test") is None:
+            item.add_marker(pytest.mark.module_under_test(app_under_test))
+
+
 @pytest.fixture(scope="session")
 def backend_runtime(tmp_path_factory):
     work_dir = tmp_path_factory.mktemp("backend")
