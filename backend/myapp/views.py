@@ -318,6 +318,60 @@ def change_password_api(request):
     update_session_auth_hash(request, user)
     return JsonResponse({"success": True})
 
+
+def _delete_attachment_files(storage, names):
+    """Remove uploaded files once their rows are gone. A file that is already
+    missing or locked must not undo a deletion that has been committed."""
+    for name in names:
+        try:
+            storage.delete(name)
+        except OSError:
+            pass
+
+
+@require_POST
+def delete_account_api(request):
+    """Permanently delete the signed-in user's own account after re-checking
+    their password, then sign this session out.
+
+    Deleting the user cascades to their inventories, categories, locations,
+    items, attachments and valuations. Uploaded files are removed from
+    storage only after the database transaction commits, so a failed
+    deletion leaves both the account and its files intact.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+
+    password = data.get("password", "")
+    if not isinstance(password, str) or not password:
+        errors = {"password": ["Password is required."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    user = request.user
+    if not user.check_password(password):
+        errors = {"password": ["Your password is incorrect."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    # Archived rows are deleted too, so collect every file the user owns.
+    attachments = Attachment.objects.filter(item__inventory__owner=user).exclude(file="")
+    storage = Attachment._meta.get_field("file").storage
+    file_names = list(attachments.values_list("file", flat=True))
+
+    with transaction.atomic():
+        user.delete()
+        transaction.on_commit(lambda: _delete_attachment_files(storage, file_names))
+
+    logout(request)
+    return JsonResponse({"success": True, "deleted": True})
+
 ACTIVE_INVENTORY_KEY = "active_inventory_id"
 
 def _lock_inventory_owner(user):

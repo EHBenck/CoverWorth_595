@@ -599,6 +599,190 @@ class AccountSettingsAPITestCase(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(self.PASSWORD))
 
+class AccountDeletionAPITestCase(TestCase):
+    PASSWORD = "Sturdy-passphrase-42"
+    OTHER_PASSWORD = "Other-passphrase-58"
+
+    def setUp(self):
+        self.media_root = self.enterContext(TemporaryDirectory(prefix="coverworth-delete-media-"))
+        self.enterContext(override_settings(MEDIA_ROOT=self.media_root))
+
+        self.user = User.objects.create_user(
+            username="erin", email="erin@example.com", password=self.PASSWORD,
+        )
+        self.other = User.objects.create_user(
+            username="frank", email="frank@example.com", password=self.OTHER_PASSWORD,
+        )
+        self.inventory = Inventory.objects.create(owner=self.user, name="Home")
+        self.archived_inventory = Inventory.objects.create(
+            owner=self.user, name="Old home", archived_at=timezone.now(),
+        )
+        self.category = Category.objects.create(inventory=self.inventory, name="Electronics")
+        self.location = Location.objects.create(inventory=self.inventory, name="Garage")
+        self.item = Item.objects.create(
+            inventory=self.inventory, category=self.category, location=self.location, name="Laptop",
+        )
+        self.archived_item = Item.objects.create(
+            inventory=self.archived_inventory, name="Old TV", archived_at=timezone.now(),
+        )
+        self.photo = Attachment.objects.create(
+            item=self.item,
+            file=SimpleUploadedFile("laptop.png", b"\x89PNG\r\n\x1a\nlaptop", content_type="image/png"),
+            file_type="photo",
+        )
+        self.archived_receipt = Attachment.objects.create(
+            item=self.archived_item,
+            file=SimpleUploadedFile("tv.pdf", b"%PDF-1.4 tv", content_type="application/pdf"),
+            file_type="receipt",
+            archived_at=timezone.now(),
+        )
+        self.valuation = ValuationRun.objects.create(
+            item=self.item, requested_by=self.user, status="success",
+            estimated_amount=Decimal("500.00"), sample_count=3,
+        )
+
+        self.other_inventory = Inventory.objects.create(owner=self.other, name="Frank's home")
+        self.other_item = Item.objects.create(inventory=self.other_inventory, name="Bike")
+        self.other_photo = Attachment.objects.create(
+            item=self.other_item,
+            file=SimpleUploadedFile("bike.png", b"\x89PNG\r\n\x1a\nbike", content_type="image/png"),
+            file_type="photo",
+        )
+
+        self.client = Client(enforce_csrf_checks=True)
+        self.client.force_login(self.user)
+
+    def _delete(self, payload=None, *, client=None):
+        client = client or self.client
+        token = client.get("/api/auth/csrf/").cookies["csrftoken"].value
+        return client.post(
+            "/api/account/delete/",
+            data=payload if isinstance(payload, str) else json.dumps(
+                {"password": self.PASSWORD} if payload is None else payload
+            ),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+    def _file_exists(self, attachment):
+        return attachment.file.storage.exists(attachment.file.name)
+
+    def assertAccountIntact(self):
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+        self.assertEqual(Inventory.objects.filter(owner=self.user).count(), 2)
+        self.assertEqual(Item.objects.filter(inventory__owner=self.user).count(), 2)
+        self.assertTrue(self._file_exists(self.photo))
+        self.assertTrue(self._file_exists(self.archived_receipt))
+
+    def test_owner_can_delete_account_and_all_owned_data(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._delete()
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["deleted"])
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        for model, lookup in [
+            (Inventory, {"owner_id": self.user.pk}),
+            (Category, {"pk": self.category.pk}),
+            (Location, {"pk": self.location.pk}),
+            (Item, {"pk__in": [self.item.pk, self.archived_item.pk]}),
+            (Attachment, {"pk__in": [self.photo.pk, self.archived_receipt.pk]}),
+            (ValuationRun, {"pk": self.valuation.pk}),
+        ]:
+            with self.subTest(model=model.__name__):
+                self.assertFalse(model.objects.filter(**lookup).exists())
+        self.assertFalse(self._file_exists(self.photo))
+        self.assertFalse(self._file_exists(self.archived_receipt))
+
+    def test_deletion_logs_out_every_session_of_the_deleted_user(self):
+        other_session = Client()
+        other_session.force_login(self.user)
+
+        self.assertEqual(self._delete().status_code, 200)
+
+        self.assertEqual(self.client.get("/api/account/").status_code, 401)
+        self.assertEqual(other_session.get("/api/account/").status_code, 401)
+
+    def test_deletion_leaves_other_users_untouched(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self._delete().status_code, 200)
+
+        self.assertTrue(User.objects.filter(pk=self.other.pk).exists())
+        self.assertTrue(Item.objects.filter(pk=self.other_item.pk).exists())
+        self.assertTrue(self._file_exists(self.other_photo))
+
+    def test_another_users_account_cannot_be_deleted(self):
+        # Neither the other user's password nor naming them in the payload
+        # lets this session reach their account.
+        for payload in [
+            {"password": self.OTHER_PASSWORD},
+            {"password": self.OTHER_PASSWORD, "username": "frank"},
+            {"password": self.OTHER_PASSWORD, "user_id": self.other.pk},
+        ]:
+            with self.subTest(payload=payload):
+                self.assertEqual(self._delete(payload).status_code, 400)
+        self.assertTrue(User.objects.filter(pk=self.other.pk).exists())
+        self.assertAccountIntact()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._delete({"password": self.PASSWORD, "username": "frank"})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertTrue(User.objects.filter(pk=self.other.pk).exists())
+
+    def test_failed_deletion_leaves_account_and_session_intact(self):
+        for payload in [
+            {"password": "wrong-password"},
+            {"password": ""},
+            {"password": 42},
+            {},
+            "[]",
+            "{bad json",
+        ]:
+            with self.subTest(payload=payload):
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self._delete(payload)
+                self.assertEqual(response.status_code, 400)
+        self.assertIn("password", self._delete({"password": "wrong-password"}).json()["errors"])
+        self.assertAccountIntact()
+        self.assertEqual(self.client.get("/api/account/").status_code, 200)
+
+    def test_database_failure_rolls_back_and_keeps_files(self):
+        with patch.object(User, "delete", side_effect=RuntimeError("database unavailable")):
+            client = Client(enforce_csrf_checks=True, raise_request_exception=False)
+            client.force_login(self.user)
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self._delete(client=client)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertAccountIntact()
+
+    def test_missing_files_do_not_block_deletion(self):
+        self.photo.file.storage.delete(self.photo.file.name)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._delete()
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_deletion_requires_authentication(self):
+        anonymous = Client(enforce_csrf_checks=True)
+
+        self.assertEqual(self._delete(client=anonymous).status_code, 401)
+        self.assertAccountIntact()
+
+    def test_deletion_requires_csrf_and_post(self):
+        response = self.client.post(
+            "/api/account/delete/",
+            data=json.dumps({"password": self.PASSWORD}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.client.get("/api/account/delete/").status_code, 405)
+        self.assertAccountIntact()
+
+
 class InventorySwitchingTestCase(TestCase):
 
     def setUp(self):

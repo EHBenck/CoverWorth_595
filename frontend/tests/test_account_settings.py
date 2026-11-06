@@ -84,7 +84,8 @@ async def test_change_password_keeps_user_signed_in(user: User, account, api) ->
     user.find(marker="new-password-confirm").type(NEW_PASSWORD)
     user.find("Update password").click()
 
-    await user.should_see("Password changed.", retries=20)
+    # Checking, validating and re-hashing the password is deliberately slow.
+    await user.should_see("Password changed.", retries=100)
     assert can_sign_in(api, account["username"], NEW_PASSWORD)
     assert not can_sign_in(api, account["username"], PASSWORD)
 
@@ -110,4 +111,40 @@ async def test_change_password_validation_keeps_dialog_open(user: User, account,
     await user.should_see("This password is entirely numeric.", retries=20)
     await user.should_see("Change password")
 
+    assert can_sign_in(api, account["username"], PASSWORD)
+
+
+async def test_delete_account_signs_out_and_returns_to_login(user: User, account, api) -> None:
+    await open_settings(user, account)
+    click_button(user, "Delete Account")
+    await user.should_see("Delete your account?")
+    await user.should_see("cannot be undone")
+    user.find(marker="delete-account-password").type(PASSWORD)
+    user.find("Permanently delete account").click()
+
+    await user.should_see("Sign in to your account", retries=20)
+    assert not app.storage.user.get("auth_cookies")
+    assert not app.storage.user.get("username")
+    assert api.get("/api/account/").status_code == 401
+    assert not can_sign_in(api, account["username"], PASSWORD)
+
+    await user.open("/settings")
+    await user.should_see("Sign in to your account", retries=20)
+
+
+async def test_delete_account_with_wrong_password_keeps_account(user: User, account, api) -> None:
+    await open_settings(user, account)
+    click_button(user, "Delete Account")
+    user.find(marker="delete-account-password").type("wrong-password")
+    user.find("Permanently delete account").click()
+
+    await user.should_see("Your password is incorrect.", retries=20)
+    await user.should_see("Delete your account?")
+    assert app.storage.user.get("auth_cookies")
+    assert api.get("/api/account/").status_code == 200
+
+    user.find(marker="cancel-account-delete").click()
+    with user:
+        dialog = next(iter(user.find(marker="delete-account-dialog").elements))
+    assert not dialog.value
     assert can_sign_in(api, account["username"], PASSWORD)
