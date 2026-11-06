@@ -5,6 +5,12 @@ from .conditions import CONDITION_MAP
 import requests
 import os
 import time
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Automatically load credentials from backend/.env
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(ENV_PATH)
 
 def parse_listings(data):
     rows = []
@@ -75,7 +81,7 @@ def get_ebay_access_token():
 
     return _cached_token
 
-def search_ebay(query, access_token=None):
+def search_ebay(query, access_token=None, used_only=False):
     if access_token is None:
         access_token = get_ebay_access_token()
 
@@ -87,8 +93,12 @@ def search_ebay(query, access_token=None):
     }
     params = {
         "q": query,
-        "limit": 50,        
-        "filter": "buyingOptions:{FIXED_PRICE}",
+        "limit": 50,
+        "filter": (
+            "buyingOptions:{FIXED_PRICE},conditions:{USED}"
+            if used_only
+            else "buyingOptions:{FIXED_PRICE}"
+        ),
     }
     response = requests.get(url, headers=headers, params=params, timeout=15,)
     response.raise_for_status()
