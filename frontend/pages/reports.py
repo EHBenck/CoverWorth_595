@@ -369,27 +369,27 @@ def reports_page():
 
                     include_photos = ui.checkbox(
                         "Item photos",
-                        value=True,
+                        value=False,
                     )
 
                     include_purchase_prices = ui.checkbox(
                         "Purchase prices",
-                        value=True,
+                        value=False,
                     )
 
                     include_current_values = ui.checkbox(
                         "Current valuations",
-                        value=True,
+                        value=False,
                     )
 
                     include_serial_numbers = ui.checkbox(
                         "Serial and model numbers",
-                        value=True,
+                        value=False,
                     )
 
                     include_receipts = ui.checkbox(
                         "Receipts and supporting documents",
-                        value=True,
+                        value=False,
                     )
 
                 ui.separator()
@@ -436,7 +436,7 @@ def reports_page():
                             "PDF": "PDF",
                             "CSV": "CSV",
                         },
-                        value="CSV",
+                        value="PDF",
                     ).props("inline")
 
                     csv_warning = ui.label(
