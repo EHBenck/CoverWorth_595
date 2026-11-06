@@ -12,6 +12,7 @@ from utilities.mockdata import AI_PREVIEW, VALUATION_ITEMS
 # COVERWORTH - VALUATIONS PAGE
 # ------------------------------------------------------------
 # Uses mock data for the frontend implementation.
+# This comment is for testing the automatic frontend/backend integration testing and will be removed.
 #
 # TODO:
 #   - valuation rows can come from the Django API
