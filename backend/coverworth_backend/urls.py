@@ -83,6 +83,7 @@ urlpatterns = [
     path("api/auth/logout/", views.auth_logout, name="auth-logout"),
     path("api/account/", views.account_api, name="account-api"),
     path("api/account/password/", views.change_password_api, name="change-password-api"),
+    path("api/account/delete/", views.delete_account_api, name="delete-account-api"),
     path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
     path("api/items/", views.item_list, name="item-list"),
     path("api/inventory/<uuid:inventory_id>/categories/", views.category_list_api, name="category-list-api"),
@@ -97,5 +98,6 @@ urlpatterns = [
     path("api/inventories/<uuid:inventory_id>/", views.update_inventory_api, name="update-inventory-api"),
     path("api/inventories/<uuid:inventory_id>/archive/", views.archive_inventory_api, name="archive-inventory-api"),
     path("api/reports/csv/", views.csv_report_api, name="csv-report-api"),
+    path("api/reports/pdf/", views.pdf_report_api, name="pdf-report-api"),
 
 ]

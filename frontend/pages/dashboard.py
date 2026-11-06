@@ -65,7 +65,9 @@ def show_login_page(error_message=""):
                         headers=csrf_headers(session),
                         timeout=5,
                     )
-            
+                    print("LOGIN STATUS:", response.status_code)
+                    print("LOGIN RESPONSE:", response.text)
+                    print("LOGIN COOKIES:", session.cookies.get_dict())
                     if response.status_code == 401:
                         error.text = "Invalid username or password."
                         return

@@ -371,6 +371,80 @@ class LocationAPITests(TestCase):
                 for invalid in ["invalid", str(uuid4()), str(self.archived_location.public_id), str(self.other_location.public_id), str(self.foreign_location.public_id)]:
                     self.assert_invalid(self.client.get(url, {"location": invalid}), "location")
 
+    def test_location_filters_normalize_whitespace_consistently(self):
+        for url in (f"/api/inventory/{self.inventory.public_id}/", "/api/items/"):
+            with self.subTest(url=url):
+                response = self.client.get(url, {"location": f"  {self.basement.public_id}  "})
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(
+                    [row["public_id"] for row in response.json()["items"]],
+                    [str(self.item.public_id)],
+                )
+                response = self.client.get(url, {"location": "  unassigned  "})
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(
+                    [row["public_id"] for row in response.json()["items"]],
+                    [str(self.unassigned_item.public_id)],
+                )
+                self.assertEqual(len(self.client.get(url, {"location": "  "}).json()["items"]), 2)
+
+    def test_archived_item_can_change_location_without_being_restored(self):
+        response = self.client.post(f"/api/item/{self.item.public_id}/archive/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.item.refresh_from_db()
+        archived_at = self.item.archived_at
+        response = self.client.post(self.edit_url, self.item_data(location=str(self.office.public_id)))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location, self.office)
+        self.assertTrue(self.item.is_archived)
+        self.assertEqual(self.item.archived_at, archived_at)
+
+    def test_restore_requires_active_same_inventory_location_and_allows_reassignment(self):
+        self.assertEqual(self.client.post(f"/api/item/{self.item.public_id}/archive/").status_code, 200)
+        response = self.client.delete(self.location_url(self.basement))
+        self.assertEqual(response.status_code, 200, response.content)
+        restore_url = f"/api/item/{self.item.public_id}/restore/"
+        response = self.client.post(restore_url)
+        self.assert_invalid(response, "location")
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_archived)
+        self.assertIsNotNone(self.item.archived_at)
+        self.assertEqual(self.item.location, self.basement)
+        response = self.client.post(self.edit_url, self.item_data(location=str(self.office.public_id)))
+        self.assertEqual(response.status_code, 200, response.content)
+        response = self.client.post(restore_url)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.is_archived)
+        self.assertIsNone(self.item.archived_at)
+        self.assertEqual(self.item.location, self.office)
+
+    def test_restore_cannot_revive_legacy_cross_inventory_location_assignment(self):
+        # Legacy/admin data can bypass ItemForm. Restoring still enforces scope.
+        Item.objects.filter(pk=self.item.pk).update(
+            is_archived=True, archived_at=timezone.now(), location=self.other_location,
+        )
+        response = self.client.post(f"/api/item/{self.item.public_id}/restore/")
+        self.assert_invalid(response, "location")
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_archived)
+        self.assertIsNotNone(self.item.archived_at)
+        response = self.client.post(self.edit_url, self.item_data(location=""))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.client.post(f"/api/item/{self.item.public_id}/restore/").status_code, 200)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.location)
+
+    def test_deleted_item_cannot_be_edited_or_restored_as_an_archived_item(self):
+        self.assertEqual(self.client.delete(self.edit_url).status_code, 200)
+        self.assertEqual(self.client.post(self.edit_url, self.item_data(location=str(self.office.public_id))).status_code, 404)
+        self.assertEqual(self.client.post(f"/api/item/{self.item.public_id}/restore/").status_code, 404)
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.is_archived)
+        self.assertIsNotNone(self.item.archived_at)
+        self.assertEqual(self.item.location, self.basement)
+
     def test_item_assignment_cannot_bypass_owner_or_archived_inventory_checks(self):
         self.client.force_login(self.stranger)
         self.assertEqual(self.client.post(self.add_url, self.item_data(location=str(self.basement.public_id))).status_code, 403)
@@ -467,3 +541,21 @@ class ConcurrentLocationMutationTests(TransactionTestCase):
         self.location.refresh_from_db()
         assigned = self.location.items.filter(archived_at__isnull=True).exists()
         self.assertFalse(self.location.archived_at is not None and assigned)
+
+    def test_item_restore_racing_location_archive_preserves_active_assignment(self):
+        item = Item.objects.create(
+            inventory=self.inventory, category=self.category, name="Stored laptop",
+            location=self.location, is_archived=True, archived_at=timezone.now(),
+        )
+        results = self.race([
+            ("post", f"/api/item/{item.public_id}/restore/", {}),
+            ("delete", f"/api/location/{self.location.public_id}/", {}),
+        ])
+        restore_status, archive_status = [status for status, _ in results]
+        self.assertIn(restore_status, (200, 400, 409), results)
+        self.assertIn(archive_status, (200, 400, 409), results)
+        self.assertTrue(restore_status == 200 or archive_status == 200, results)
+        self.assertFalse(restore_status == 200 and archive_status == 200, results)
+        item.refresh_from_db()
+        self.location.refresh_from_db()
+        self.assertFalse(item.archived_at is None and self.location.archived_at is not None)

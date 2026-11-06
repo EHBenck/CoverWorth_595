@@ -1,8 +1,9 @@
-import csv
 import json
-import requests
 from decimal import Decimal
+from time import sleep
 from uuid import UUID
+
+import requests
 
 from django.contrib.auth import (
     authenticate,
@@ -25,7 +26,8 @@ from django.views.decorators.http import require_http_methods, require_POST, req
 
 from myapp.forms import ItemForm
 from myapp.models import Inventory, Item, Location, ValuationRun, ValuationSourceResult, ComparableListing, Category, AttachmentType, Attachment
-from .utilities.constants import CSV_COLUMN_HEADERS
+from .reports.csv import build_csv_report
+from .reports.pdf import build_pdf_report
 
 from inventory_manager.pipeline.ebay_client import search_ebay
 from inventory_manager.pipeline.poc_valuation import estimate
@@ -316,6 +318,60 @@ def change_password_api(request):
     update_session_auth_hash(request, user)
     return JsonResponse({"success": True})
 
+
+def _delete_attachment_files(storage, names):
+    """Remove uploaded files once their rows are gone. A file that is already
+    missing or locked must not undo a deletion that has been committed."""
+    for name in names:
+        try:
+            storage.delete(name)
+        except OSError:
+            pass
+
+
+@require_POST
+def delete_account_api(request):
+    """Permanently delete the signed-in user's own account after re-checking
+    their password, then sign this session out.
+
+    Deleting the user cascades to their inventories, categories, locations,
+    items, attachments and valuations. Uploaded files are removed from
+    storage only after the database transaction commits, so a failed
+    deletion leaves both the account and its files intact.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+
+    password = data.get("password", "")
+    if not isinstance(password, str) or not password:
+        errors = {"password": ["Password is required."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    user = request.user
+    if not user.check_password(password):
+        errors = {"password": ["Your password is incorrect."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    # Archived rows are deleted too, so collect every file the user owns.
+    attachments = Attachment.objects.filter(item__inventory__owner=user).exclude(file="")
+    storage = Attachment._meta.get_field("file").storage
+    file_names = list(attachments.values_list("file", flat=True))
+
+    with transaction.atomic():
+        user.delete()
+        transaction.on_commit(lambda: _delete_attachment_files(storage, file_names))
+
+    logout(request)
+    return JsonResponse({"success": True, "deleted": True})
+
 ACTIVE_INVENTORY_KEY = "active_inventory_id"
 
 def _lock_inventory_owner(user):
@@ -327,7 +383,19 @@ def _lock_inventory_owner(user):
         # its writer lock BEFORE reading how many usable inventories remain.
         # No user data changes; a second archive must wait or safely retry.
         pk_field = User._meta.pk.attname
-        owners.update(**{pk_field: F(pk_field)})
+        for attempt in range(6):
+            try:
+                with transaction.atomic():
+                    owners.update(**{pk_field: F(pk_field)})
+                return
+            except OperationalError as error:
+                is_locked = any(
+                    word in str(error).lower()
+                    for word in ("locked", "busy")
+                )
+                if not is_locked or attempt == 5:
+                    raise
+                sleep(0.01 * (2 ** attempt))
     else:
         owners.select_for_update().get()
 
@@ -343,8 +411,8 @@ def _inventory_busy_response(error):
         "error": "Your inventories are being updated. Please try again.",
     }, status=409)
 
-    
-def _active_inventory(request):
+
+def _active_inventory(request, *, persist_fallback=True):
     inventories = Inventory.objects.filter(
         owner=request.user,
         archived_at__isnull=True,
@@ -365,9 +433,8 @@ def _active_inventory(request):
         inventory = inventories.first()
 
         if inventory:
-            request.session[ACTIVE_INVENTORY_KEY] = str(
-                inventory.public_id
-            )
+            if saved_id or persist_fallback:
+                request.session[ACTIVE_INVENTORY_KEY] = str(inventory.public_id)
         else:
             request.session.pop(ACTIVE_INVENTORY_KEY, None)
 
@@ -659,7 +726,7 @@ def archive_inventory_api(request, inventory_id):
             # Reuse the existing selection rules. A valid selected inventory
             # stays selected; an archived/stale selection falls back to the
             # oldest remaining owned inventory (created_at, then pk).
-            active = _active_inventory(request)
+            active = _active_inventory(request, persist_fallback=False)
     except OperationalError as error:
         return _inventory_busy_response(error)
 
@@ -798,8 +865,7 @@ def csv_report_api(request):
     # GET INVENTORY ITEMS
     # --------------------------------------------------------
     items = (
-        Item.objects
-        .select_related("category", "location")
+        Item.objects.select_related("category", "location")
         .filter(
             inventory=inventory,
             archived_at__isnull=True,
@@ -818,15 +884,11 @@ def csv_report_api(request):
                 status=400,
             )
 
-        category = (
-            Category.objects
-            .filter(
-                public_id=category_uuid,
-                inventory=inventory,
-                archived_at__isnull=True,
-            )
-            .first()
-        )
+        category = Category.objects.filter(
+            public_id=category_uuid,
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).first()
         if category is None:
             return JsonResponse(
                 {"error": "Category not found."},
@@ -835,54 +897,89 @@ def csv_report_api(request):
 
         items = items.filter(category=category)
 
-    # CREATE CSV RESPONSE
-    # --------------------------------------------------------
-    response = HttpResponse(content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = (
-        'attachment; filename="coverworth-report.csv"'
+    response = HttpResponse(
+        build_csv_report(
+            items,
+            include_purchase_prices=include_purchase_prices,
+            include_current_values=include_current_values,
+            include_serial_numbers=include_serial_numbers,
+        ),
+        content_type="text/csv; charset=utf-8",
     )
-    response.write("\ufeff")
-    writer = csv.writer(response)
+    response["Content-Disposition"] = 'attachment; filename="coverworth-report.csv"'
+    return response
 
-    # COLUMN HEADERS
-    # --------------------------------------------------------
-    headers = list(CSV_COLUMN_HEADERS)
-    if include_serial_numbers:
-        headers.extend(["Model Number", "Serial Number"])
-    if include_purchase_prices:
-        headers.extend(["Purchase Date", "Purchase Price"])
-    if include_current_values:
-        headers.append("Current Value")
-    writer.writerow(headers)
 
-    # ITEM ROWS
-    # --------------------------------------------------------
-    for item in items:
-        row = [
-            item.name,
-            item.category.name if item.category else "Uncategorized",
-            item.location.name if item.location else "",
-            item.description,
-            item.brand,
-            item.get_condition_display(),
-            item.quantity,
-        ]
+@require_http_methods(["GET"])
+def pdf_report_api(request):
+    """Generate a PDF report for the user's active inventory."""
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"error": "Authentication required."},
+            status=401,
+        )
 
-        if include_serial_numbers:
-            row.extend([item.model_number, item.serial_number])
-        if include_purchase_prices:
-            row.extend(
-                [
-                    item.purchase_date.isoformat() if item.purchase_date else "",
-                    item.purchase_amount if item.purchase_amount is not None else "",
-                ]
+    inventory = _active_inventory(request)
+    if inventory is None:
+        return JsonResponse(
+            {"error": "No active inventory found."},
+            status=404,
+        )
+
+    category_id = request.GET.get("category")
+    include_purchase_prices = request.GET.get("purchase_prices") == "1"
+    include_current_values = request.GET.get("current_values") == "1"
+    include_serial_numbers = request.GET.get("serial_numbers") == "1"
+    include_photos = request.GET.get("photos") == "1"
+    include_receipts = request.GET.get("receipts") == "1"
+
+    items = (
+        Item.objects.select_related("category", "location")
+        .prefetch_related("attachments")
+        .filter(
+            inventory=inventory,
+            archived_at__isnull=True,
+        )
+        .order_by("category__name", "name")
+    )
+
+    category_name = None
+    if category_id:
+        try:
+            category_uuid = UUID(category_id)
+        except ValueError:
+            return JsonResponse(
+                {"error": "Invalid category ID."},
+                status=400,
             )
-        if include_current_values:
-            row.append(
-                item.effective_value if item.effective_value is not None else ""
-            )
-        writer.writerow(row)
 
+        category = Category.objects.filter(
+            public_id=category_uuid,
+            inventory=inventory,
+            archived_at__isnull=True,
+        ).first()
+        if category is None:
+            return JsonResponse(
+                {"error": "Category not found."},
+                status=404,
+            )
+
+        category_name = category.name
+        items = items.filter(category=category)
+
+    response = HttpResponse(
+        build_pdf_report(
+            items,
+            category_name,
+            include_purchase_prices=include_purchase_prices,
+            include_current_values=include_current_values,
+            include_serial_numbers=include_serial_numbers,
+            include_photos=include_photos,
+            include_receipts=include_receipts,
+        ),
+        content_type="application/pdf",
+    )
+    response["Content-Disposition"] = 'attachment; filename="coverworth-report.pdf"'
     return response
 
 
@@ -946,7 +1043,8 @@ def _save_item_form_response(request, inventory, item=None):
         if editing:
             item = get_object_or_404(
                 Item.objects.select_related("location"),
-                pk=item.pk, inventory=inventory, archived_at__isnull=True,
+                Q(archived_at__isnull=True) | Q(is_archived=True),
+                pk=item.pk, inventory=inventory,
             )
         form = ItemForm(inventory, data, instance=item)
         if not form.is_valid():
@@ -1096,6 +1194,7 @@ def location_detail_api(request, location_id):
 
 
 def _filter_items_by_location(items, inventory, value):
+    value = (value or "").strip()
     if not value:
         return items
     if value == "unassigned":
@@ -1134,28 +1233,6 @@ def item_list(request):
         )
         .order_by("-updated_at")
     )
-
-    location_param = request.GET.get("location", "").strip()
-    if location_param == "unassigned":
-        items = items.filter(location__isnull=True)
-    elif location_param:
-        try:
-            location_id = UUID(location_param)
-        except ValueError:
-            location_id = None
-        location = None
-        if location_id is not None:
-            location = Location.objects.filter(
-                public_id=location_id,
-                inventory=active_inventory,
-                archived_at__isnull=True,
-            ).first()
-        if location is None:
-            return JsonResponse(
-                {"success": False, "errors": {"location": ["Choose a valid location."]}},
-                status=400,
-            )
-        items = items.filter(location=location)
 
     query = request.GET.get("q", "").strip()
     if query:
@@ -1376,35 +1453,55 @@ def edit_item_api(request, item_id):
         }, status=500)
 
 def _set_item_archived(request, item_id, archive):
-    """Archive an active item, or restore one the user archived."""
-    if not request.user.is_authenticated:
+    """Archive or restore an item without reviving an invalid location link."""
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
         return JsonResponse({"success": False, "error": "Authentication required."}, status=401)
 
-    items = Item.objects.select_related("inventory").filter(
-        public_id=item_id,
-        inventory__archived_at__isnull=True,
-    )
-    if archive:
-        item = items.filter(archived_at__isnull=True).first()
-    else:
-        item = items.filter(is_archived=True).first()
+    try:
+        with transaction.atomic():
+            # Location archival uses this same owner lock. A simultaneous restore
+            # must not leave an active item pointing at an archived location.
+            _lock_inventory_owner(request.user)
+            items = Item.objects.select_related("inventory", "location").filter(
+                public_id=item_id,
+                inventory__archived_at__isnull=True,
+            )
+            if archive:
+                item = items.filter(archived_at__isnull=True).first()
+            else:
+                item = items.filter(is_archived=True).first()
 
-    if item is None:
-        return JsonResponse({"success": False, "error": "Item not found."}, status=404)
-    if item.inventory.owner != request.user:
-        return JsonResponse(
-            {"success": False, "error": "You can only change items in your own inventory."},
-            status=403,
-        )
+            if item is None:
+                return JsonResponse({"success": False, "error": "Item not found."}, status=404)
+            if item.inventory.owner != request.user:
+                return JsonResponse(
+                    {"success": False, "error": "You can only change items in your own inventory."},
+                    status=403,
+                )
+            if not archive and item.location_id and (
+                item.location.inventory_id != item.inventory_id
+                or item.location.archived_at is not None
+            ):
+                raise ValidationError({
+                    "location": "Choose an active location in this inventory or unassign the item before restoring it."
+                })
 
-    item.is_archived = archive
-    item.archived_at = timezone.now() if archive else None
-    item.save(update_fields=["is_archived", "archived_at", "updated_at"])
+            item.is_archived = archive
+            item.archived_at = timezone.now() if archive else None
+            item.save(update_fields=["is_archived", "archived_at", "updated_at"])
 
-    return JsonResponse({
-        "success": True,
-        "message": f"Item '{item.name}' was {'archived' if archive else 'restored'}.",
-    })
+        return JsonResponse({
+            "success": True,
+            "message": f"Item '{item.name}' was {'archived' if archive else 'restored'}.",
+        })
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
 
 
 @require_POST

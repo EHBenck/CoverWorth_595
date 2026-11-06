@@ -1295,6 +1295,8 @@ async def valuations_page():
                                 "no-caps"
                             ).classes(
                                 "px-5"
+                            ).mark(
+                                "valuation-preview-cancel"
                             )
 
                             

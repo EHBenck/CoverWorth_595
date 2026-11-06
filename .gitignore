@@ -1,29 +1,38 @@
-# Python
-backend/.venv/
-/media/
+# Python environments and generated files
+.venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Django
-db.sqlite3
+# Local database, uploads, and NiceGUI session storage
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+/media/
+/backend/media/
+.nicegui/
 
-# React / Node
-frontend/node_modules/
-frontend/dist/
-frontend/.nicegui/
-
-# Environment variables
+# Local credentials; the blank example is the only environment template tracked
 .env
-.env.local
+.env.*
 *.env
+!.env.example
 
-# OS
+# Optional frontend build output
+node_modules/
+dist/
+
+# Operating systems
 .DS_Store
 Thumbs.db
 
-frontend/.nicegui/
-backend/db.sqlite3
-.env
-.venv/
-__pycache__/
-backend/media/item_attachments/
+# Ground truth intermediate datasets and backups
+backend/inventory_manager/ground_truth/ground_truth_candidates*.csv
+backend/inventory_manager/ground_truth/ground_truth_before_medians_backup.csv
+
+# Local database backups (also covered by *.sqlite3)
+backend/db.backup-before-migration.sqlite3

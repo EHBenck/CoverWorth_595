@@ -1,6 +1,7 @@
 """Helpers shared by the NiceGUI simulated-user tests."""
 
 import io
+import inspect
 
 from nicegui import ui
 from nicegui.testing import User
@@ -28,16 +29,17 @@ def set_value(user: User, label: str, value) -> None:
             element.value = value
 
 
-def click_button(user: User, text: str, index: int = 0) -> None:
+def click_button(user: User, text: str, index: int = 0, marker: str | None = None) -> None:
     with user:
         buttons = [
             button
-            for button in user.find(kind=ui.button, content=text).elements
+            for button in user.find(kind=ui.button, content=text if marker is None else None, marker=marker).elements
             if button.text == text
         ]
 
     assert len(buttons) > index, (
-        f"Expected button {text!r} at index {index}, "
+        f"Expected button {text!r} at index {index}"
+        f"{f' with marker {marker!r}' if marker else ''}, "
         f"but found {len(buttons)} matching buttons."
     )
 
@@ -66,13 +68,23 @@ def click_menu_item(user: User, text: str) -> None:
 
 
 async def upload_file(user: User, filename: str, content: bytes, content_type: str) -> None:
-    """Simulate picking a file in the page's ui.upload."""
+    """Use the real upload handler on both supported NiceGUI event formats."""
     with user:
         upload_element = user.find(kind=ui.upload).elements.pop()
 
-    await upload_element.handle_uploads([
-        ui.upload.SmallFileUpload(filename, content_type, content)
-    ])
+        if hasattr(ui.upload, "SmallFileUpload"):
+            upload = ui.upload.SmallFileUpload(filename, content_type, content)
+        else:
+            from starlette.datastructures import Headers, UploadFile
+
+            upload = UploadFile(
+                filename=filename,
+                file=io.BytesIO(content),
+                headers=Headers({"content-type": content_type}),
+            )
+        result = upload_element.handle_uploads([upload])
+        if inspect.isawaitable(result):
+            await result
 
 
 def make_backend_unreachable(monkeypatch) -> None:
