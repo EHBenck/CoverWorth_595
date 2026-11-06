@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal
+from time import sleep
 from uuid import UUID
 
 import requests
@@ -328,7 +329,19 @@ def _lock_inventory_owner(user):
         # its writer lock BEFORE reading how many usable inventories remain.
         # No user data changes; a second archive must wait or safely retry.
         pk_field = User._meta.pk.attname
-        owners.update(**{pk_field: F(pk_field)})
+        for attempt in range(6):
+            try:
+                with transaction.atomic():
+                    owners.update(**{pk_field: F(pk_field)})
+                return
+            except OperationalError as error:
+                is_locked = any(
+                    word in str(error).lower()
+                    for word in ("locked", "busy")
+                )
+                if not is_locked or attempt == 5:
+                    raise
+                sleep(0.01 * (2 ** attempt))
     else:
         owners.select_for_update().get()
 
@@ -345,7 +358,7 @@ def _inventory_busy_response(error):
     }, status=409)
 
 
-def _active_inventory(request):
+def _active_inventory(request, *, persist_fallback=True):
     inventories = Inventory.objects.filter(
         owner=request.user,
         archived_at__isnull=True,
@@ -366,9 +379,8 @@ def _active_inventory(request):
         inventory = inventories.first()
 
         if inventory:
-            request.session[ACTIVE_INVENTORY_KEY] = str(
-                inventory.public_id
-            )
+            if saved_id or persist_fallback:
+                request.session[ACTIVE_INVENTORY_KEY] = str(inventory.public_id)
         else:
             request.session.pop(ACTIVE_INVENTORY_KEY, None)
 
@@ -660,7 +672,7 @@ def archive_inventory_api(request, inventory_id):
             # Reuse the existing selection rules. A valid selected inventory
             # stays selected; an archived/stale selection falls back to the
             # oldest remaining owned inventory (created_at, then pk).
-            active = _active_inventory(request)
+            active = _active_inventory(request, persist_fallback=False)
     except OperationalError as error:
         return _inventory_busy_response(error)
 
