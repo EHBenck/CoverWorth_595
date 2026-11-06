@@ -1,0 +1,4 @@
+nicegui==3.18.0
+pytest==7.4.0
+pytest-asyncio==0.23.8
+requests==2.31.0

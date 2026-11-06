@@ -1,21 +1,22 @@
-﻿item_name,category,condition,reference_value,source,date_checked
-Apple iPhone 13 128GB,Smartphone,Used,,eBay,
-Apple iPhone 14 128GB,Smartphone,Used,,eBay,
-Samsung Galaxy S22 128GB,Smartphone,Used,,eBay,
-Apple iPad 10th Gen 64GB,Tablet,Used,,eBay,
-Apple Watch Series 8 45mm,Smartwatch,Used,,eBay,
-Nintendo Switch OLED,Gaming,Used,,eBay,
-Sony PlayStation 5 Disc Edition,Gaming,Used,,eBay,
-Xbox Series X 1TB,Gaming,Used,,eBay,
-Nintendo Switch Lite,Gaming,Used,,eBay,
-Sony WH-1000XM5,Audio,Used,,eBay,
-Apple AirPods Max,Audio,Used,,eBay,
-Bose QuietComfort 45,Audio,Used,,eBay,
-Canon EOS Rebel T7,Camera,Used,,eBay,
-GoPro HERO11 Black,Camera,Used,,eBay,
-Apple MacBook Air M1 2020 256GB,Computer,Used,,eBay,
-Dell XPS 13 9310,Computer,Used,,eBay,
-Dyson V8 Absolute,Home Appliance,Used,,eBay,
-KitchenAid Artisan 5-Quart Stand Mixer,Kitchen Appliance,Used,,eBay,
-"Milwaukee M18 Fuel 1/2"" Impact Wrench",Power Tool,Used,,eBay,
-LEGO Star Wars Millennium Falcon 75257,Collectible/Toy,Used,,eBay,
+item_name,category,condition,reference_value,source,date_checked,configuration
+Apple iPhone 13 128GB,Smartphone,Used,240.99,eBay,2026-11-05,standard
+Apple iPhone 14 128GB,Smartphone,Used,274.6,eBay,2026-11-05,standard
+Samsung Galaxy S22 128GB,Smartphone,Used,164.98,eBay,2026-11-05,standard
+Apple iPad 10th Gen 64GB,Tablet,Used,269.95,eBay,2026-11-05,standard
+Apple Watch Series 8 45mm,Smartwatch,Used,119.99,eBay,2026-11-05,standard
+Nintendo Switch OLED,Gaming,Used,179.99,eBay,2026-11-05,standard
+Sony PlayStation 5 Disc Edition,Gaming,Used,477.99,eBay,2026-11-05,standard
+Xbox Series X 1TB,Gaming,Used,599.97,eBay,2026-11-05,standard
+Nintendo Switch Lite,Gaming,Used,109.0,eBay,2026-11-05,standard
+Sony WH-1000XM5,Audio,Used,124.5,eBay,2026-11-05,standard
+Apple AirPods Max,Audio,Used,199.99,eBay,2026-11-05,standard
+Bose QuietComfort 45,Audio,Used,89.99,eBay,2026-11-05,standard
+Canon EOS Rebel T7,Camera,Used,262.47,eBay,2026-11-05,standard
+GoPro HERO11 Black,Camera,Used,190.0,eBay,2026-11-05,standard
+Apple MacBook Air M1 2020 256GB,Computer,Used,399.99,eBay,2026-11-05,standard
+Dell XPS 13 9310,Computer,Used,435.0,eBay,2026-11-05,standard
+Dyson V8 Absolute,Home Appliance,Used,159.99,eBay,2026-11-05,standard
+KitchenAid Artisan 5-Quart Stand Mixer,Kitchen Appliance,Used,199.98,eBay,2026-11-05,standard
+LEGO Star Wars Millennium Falcon 75257,Collectible/Toy,Used,82.5,eBay,2026-11-05,standard
+"Milwaukee M18 Fuel 1/2"" Impact Wrench",Power Tool,Used,239.95,eBay,2026-11-05,kit
+"Milwaukee M18 Fuel 1/2"" Impact Wrench",Power Tool,Used,140.0,eBay,2026-11-05,tool_only
