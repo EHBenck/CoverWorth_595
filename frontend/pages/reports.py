@@ -560,23 +560,23 @@ def reports_page():
                         lambda _: report_option_changed(),
                     )
 
-                # GENERATE BUTTON
-                # ---------------------------------------------
                 async def generate_report():
-                    if report_format.value == "PDF":
+
+                    # DEFENSIVE CSV VALIDATION
+                    # ========================================================
+                    if report_format.value == "CSV" and (
+                        include_photos.value or include_receipts.value
+                    ):
+
                         ui.notify(
-                            (
-                                "PDF generation has not "
-                                "been implemented yet. "
-                                "Choose CSV to export "
-                                "your inventory."
-                            ),
-                            type="info",
+                            ("CSV reports cannot include " "photos or receipts."),
+                            type="warning",
                         )
+
                         return
 
-                    # BUILD CSV QUERY
-                    # --------------------------------------------------------
+                    # COMMON REPORT OPTIONS
+                    # ========================================================
                     params = {
                         "purchase_prices": (
                             "1" if include_purchase_prices.value else "0"
@@ -589,72 +589,132 @@ def reports_page():
                         ),
                     }
 
+                    # Optional category filter
                     if category_filter.value:
+
                         params["category"] = category_filter.value
 
-                    # REQUEST CSV
-                    # --------------------------------------------------------
+                    # CHOOSE REPORT TYPE
+                    # ========================================================
+                    if report_format.value == "PDF":
+
+                        endpoint = "/api/reports/pdf/"
+
+                        default_filename = "coverworth-report.pdf"
+
+                        media_type = "application/pdf"
+
+                        # PDF supports attachments.
+                        params["photos"] = "1" if include_photos.value else "0"
+
+                        params["receipts"] = "1" if include_receipts.value else "0"
+
+                    else:
+
+                        endpoint = "/api/reports/csv/"
+
+                        default_filename = "coverworth-report.csv"
+
+                        media_type = "text/csv"
+
+                    # REQUEST REPORT
+                    # ========================================================
                     try:
+
                         session = authenticated_session()
+
                         response = session.get(
-                            f"{BACKEND_URL}/api/reports/csv/",
+                            f"{BACKEND_URL}{endpoint}",
                             params=params,
-                            timeout=15,
+                            timeout=30,
                         )
 
+                        # SESSION EXPIRED
+                        # ----------------------------------------------------
                         if response.status_code == 401:
+
                             ui.notify(
                                 ("Your session has expired. " "Please sign in again."),
                                 type="negative",
                             )
+
                             return
 
+                        # API ERROR
+                        # ----------------------------------------------------
                         if not response.ok:
+
                             try:
+
                                 message = response.json().get(
                                     "error",
                                     "Could not generate report.",
                                 )
+
                             except ValueError:
+
                                 message = "Could not generate report."
 
-                            ui.notify(message, type="negative")
+                            ui.notify(
+                                message,
+                                type="negative",
+                            )
+
                             return
 
-                        # GET FILENAME FROM RESPONSE
-                        # ----------------------------------------------------
-                        filename = "coverworth-report.csv"
+                        # GET RESPONSE FILENAME
+                        # ========================================================
+                        filename = default_filename
+
                         disposition = response.headers.get(
                             "Content-Disposition",
                             "",
                         )
 
                         if "filename=" in disposition:
+
                             filename = (
-                                disposition.split("filename=", 1)[1].strip().strip('"')
+                                disposition.split(
+                                    "filename=",
+                                    1,
+                                )[1]
+                                .strip()
+                                .strip('"')
                             )
 
-                        # DOWNLOAD
-                        # ----------------------------------------------------
+                        # DOWNLOAD FILE
+                        # ========================================================
                         ui.download(
                             response.content,
                             filename=filename,
-                            media_type="text/csv",
+                            media_type=media_type,
                         )
 
+                        # SUCCESS MESSAGE
+                        # ========================================================
                         category_name = category_options.get(
                             category_filter.value,
                             "All Categories",
                         )
+
                         ui.notify(
-                            f"CSV report generated for {category_name}.",
+                            (
+                                f"{report_format.value} "
+                                "report generated for "
+                                f"{category_name}."
+                            ),
                             type="positive",
                         )
 
                     except requests.RequestException as error:
-                        print("Report generation error:", error)
+
+                        print(
+                            "Report generation error:",
+                            error,
+                        )
+
                         ui.notify(
-                            "Could not connect to the report service.",
+                            ("Could not connect to " "the report service."),
                             type="negative",
                         )
 
