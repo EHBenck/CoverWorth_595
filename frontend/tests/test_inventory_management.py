@@ -6,10 +6,8 @@ import pytest
 from nicegui import app, ui
 from nicegui.testing import User
 
-from tests import app_under_test
-from tests.ui_helpers import sign_in
+from tests.ui_helpers import click_button, sign_in
 
-pytestmark = pytest.mark.module_under_test(app_under_test)
 
 
 def create_inventory(api, name="Office", description="Work equipment") -> str:
@@ -139,7 +137,7 @@ async def test_last_inventory_is_disabled_and_existing_new_flow_creates_replacem
     user.find("New").click()
     await user.should_see("Create Inventory")
     user.find("Inventory name").type("New apartment")
-    user.find("Create").click()
+    click_button(user, "Create")
     await user.should_see("Created inventory: New apartment", retries=20)
     await user.open("/settings")
     await user.should_see(marker=f"inventory-{home_id}", retries=20)

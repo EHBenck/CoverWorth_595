@@ -13,11 +13,8 @@ import requests
 from nicegui import app, ui
 from nicegui.testing import User
 
-from tests import app_under_test
 from tests.ui_helpers import set_value, sign_in, upload_file
 
-
-pytestmark = pytest.mark.module_under_test(app_under_test)
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
@@ -114,7 +111,7 @@ async def test_create_hierarchy_and_assign_on_add_preserves_unsaved_fields(user:
     await open_add_item(user, account, api)
     fill_item(user, api, "Laptop for basement")
     user.find(kind=ui.textarea, content="Notes").type("Keep the charger with it")
-    upload_file(user, "basement-laptop.png", PNG, "image/png")
+    await upload_file(user, "basement-laptop.png", PNG, "image/png")
     await user.should_see("Photo 'basement-laptop.png' selected.", retries=30)
 
     await open_manager(user)
@@ -153,7 +150,7 @@ async def test_edit_reassigns_and_clears_optional_location(user: User, account, 
     await user.should_see(marker="item-location", retries=30)
     assert marked(user, "item-location").value == bedroom["public_id"]
     set_marked_value(user, "item-location", shelf["public_id"])
-    upload_file(user, "storage-camera.png", PNG, "image/png")
+    await upload_file(user, "storage-camera.png", PNG, "image/png")
     await user.should_see("File uploaded successfully!", retries=30)
     user.find("Save Changes").click()
     await asyncio.sleep(0)

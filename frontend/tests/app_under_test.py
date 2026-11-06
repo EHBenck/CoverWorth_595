@@ -1,10 +1,5 @@
-"""Entry point for the NiceGUI user simulation.
 
-Same page set as main.py. The test fixtures reset NiceGUI's routes before
-every test, so each page module is reloaded to register its @ui.page() route
-again. NiceGUI 3.x requires the main file to call ui.run(); under pytest that
-call only records the run config and does not start a server.
-"""
+"""Entry point for NiceGUI integration tests."""
 
 import importlib
 
@@ -13,7 +8,9 @@ from nicegui import ui
 import backend_client
 import utilities.inventory_table
 import utilities.nav_wrapper
+
 from utilities.attachments import register_attachment_routes
+
 from pages import (
     add_item,
     categories,
@@ -27,6 +24,8 @@ from pages import (
     valuations,
 )
 
+# NiceGUI's testing fixture resets registered routes between tests.
+# Reload each module so its @ui.page() decorators run again.
 PAGE_MODULES = [
     backend_client,
     utilities.nav_wrapper,
@@ -46,6 +45,12 @@ PAGE_MODULES = [
 for module in PAGE_MODULES:
     importlib.reload(module)
 
+# Register custom attachment routes after module reloads.
 register_attachment_routes()
 
-ui.run(reload=False)
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(
+        reload=False,
+        storage_secret="coverworth-test-secret",
+        show=False,
+    )

@@ -14,10 +14,8 @@ import pytest
 from nicegui import app, ui
 from nicegui.testing import User
 
-from tests import app_under_test
-from tests.ui_helpers import make_backend_unreachable, open_login, set_value, sign_in
+from tests.ui_helpers import click_button, make_backend_unreachable, open_login, set_value, sign_in
 
-pytestmark = pytest.mark.module_under_test(app_under_test)
 
 PROTECTED_PATHS = [
     "/dashboard",
@@ -109,7 +107,7 @@ async def test_login_with_wrong_password_shows_error(user: User, account) -> Non
     await open_login(user)
     user.find("Username").type(account["username"])
     user.find("Password").type("wrong-password")
-    user.find("Sign in").click()
+    click_button(user, "Sign in")
 
     await user.should_see("Invalid username or password.", retries=20)
     await user.should_not_see("Recent Items")
@@ -118,7 +116,7 @@ async def test_login_with_wrong_password_shows_error(user: User, account) -> Non
 async def test_sign_out_returns_to_login_and_locks_pages(user: User, account) -> None:
     await sign_in(user, account)
 
-    user.find("Sign out").click()
+    user.find(kind=ui.button, content="Sign out").click()
     await user.should_see("Sign in to your account", retries=20)
 
     await user.open("/reports")
@@ -308,7 +306,7 @@ async def test_login_and_register_report_unreachable_backend(user: User, account
     await open_login(user)
     user.find("Username").type(account["username"])
     user.find("Password").type(account["password"])
-    user.find("Sign in").click()
+    user.find(kind=ui.button, content="Sign in").click()
     await user.should_see("Could not connect to the server. Try again.", retries=50)
 
     await user.open("/register")
