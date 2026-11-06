@@ -6,11 +6,9 @@ import pytest
 from nicegui import app
 from nicegui.testing import User
 
-from tests import app_under_test
 from tests.conftest import PASSWORD
 from tests.ui_helpers import click_button, sign_in
 
-pytestmark = pytest.mark.module_under_test(app_under_test)
 
 NEW_PASSWORD = "Fresh-passphrase-77"
 

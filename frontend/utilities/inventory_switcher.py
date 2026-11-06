@@ -145,7 +145,7 @@ def _render_inventory_switcher(
         finally:
             dropdown.enable()
             state["busy"] = False
-
+    print("DEBUG: Creating inventory dialog")
     with ui.dialog() as create_dialog:
         with ui.card().classes("w-96 max-w-full p-5 gap-4"):
             ui.label("Create Inventory").classes("text-xl font-bold")

@@ -1,4 +1,5 @@
 import asyncio
+from tkinter import dialog
 
 from nicegui import app, run, ui
 import requests
@@ -392,35 +393,71 @@ async def inventory_page(category: str = ""):
 
     ui.timer(0.1, reload_inventory, once=True)
 
-    async def confirm_and_delete_item(item_public_id: str, item_name: str):
-        def execute_delete(item_public_id: str, item_name: str):
-                try:
-                    session = authenticated_session()
-                    response = session.delete(
-                        f"{BACKEND_URL}/api/item/{item_public_id}/edit/",
-                        headers=csrf_headers(session),
-                        timeout=10,
-                    )
-                    data = response.json() if response.content else {}
-                    if response.ok and data.get("success", True):
-                        ui.notify(f"Item '{item_name}' deleted successfully.", type="positive")
-                        reload_inventory()
-                    else:
-                        ui.notify(data.get("error", "Failed to delete item."), type="negative")
-                except requests.RequestException as error:
-                    ui.notify(f"Connection error: {error}", type="negative")
+        # Reusable delete confirmation dialog
+    selected_item = {"public_id": None, "name": None}
 
-        with ui.dialog() as dialog, ui.card().classes("p-6 gap-4 min-w-[320px]"):
-            ui.label("Delete Item").classes("text-lg font-bold")
-            ui.label(f"Are you sure you want to delete '{item_name}'?").classes("text-sm muted")
-            with ui.row().classes("w-full justify-end gap-3 mt-2"):
-                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
-                ui.button(
-                    "Delete",
-                    on_click=lambda: [dialog.close(), execute_delete(item_public_id, item_name)]
-                ).props("unelevated color=red no-caps")
-        dialog.open()
+    async def execute_delete():
+        item_public_id = selected_item["public_id"]
+        item_name = selected_item["name"]
 
+        if not item_public_id:
+            return
+
+        def send_delete():
+            session = authenticated_session(cookies)
+            return session.delete(
+                f"{BACKEND_URL}/api/item/{item_public_id}/edit/",
+                headers=csrf_headers(session),
+                timeout=10,
+            )
+
+        try:
+            response = await run.io_bound(send_delete)
+            data = response.json() if response.content else {}
+
+            if response.ok and data.get("success", True):
+                ui.notify(
+                    f"Item '{item_name}' deleted successfully.",
+                    type="positive",
+                )
+                delete_dialog.close()
+                reload_inventory()
+            else:
+                ui.notify(
+                    data.get("error", "Failed to delete item."),
+                    type="negative",
+                )
+
+        except (requests.RequestException, ValueError) as error:
+            ui.notify(f"Connection error: {error}", type="negative")
+
+    def open_delete_dialog(item_public_id: str, item_name: str):
+        selected_item["public_id"] = item_public_id
+        selected_item["name"] = item_name
+
+        delete_confirmation.text = (
+            f"Are you sure you want to delete '{item_name}'?"
+        )
+
+        delete_dialog.open()
+
+    with ui.dialog() as delete_dialog, ui.card().classes(
+        "p-6 gap-4 min-w-[320px]"
+    ):
+        ui.label("Delete Item").classes("text-lg font-bold")
+
+        delete_confirmation = ui.label("").classes("text-sm muted")
+
+        with ui.row().classes("w-full justify-end gap-3 mt-2"):
+            ui.button(
+                "Cancel",
+                on_click=delete_dialog.close,
+            ).props("flat no-caps")
+
+            ui.button(
+                "Delete",
+                on_click=execute_delete,
+            ).props("unelevated color=red no-caps")
 
     # MAIN PAGE CONTENT
     with ui.column().classes(
@@ -708,7 +745,7 @@ async def inventory_page(category: str = ""):
                             ui.separator()
                             ui.menu_item(
                                 "Delete",
-                                on_click=lambda item=item: confirm_and_delete_item(
+                                on_click=lambda item=item: open_delete_dialog(
                                     item["public_id"], item["name"]
                                 ),
                             )

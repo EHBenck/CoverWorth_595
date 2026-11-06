@@ -5,7 +5,6 @@ import io
 from nicegui import ui
 from nicegui.testing import User
 from nicegui.testing.user_interaction import UserInteraction
-from starlette.datastructures import Headers, UploadFile
 
 UNREACHABLE_BACKEND = "http://127.0.0.1:9"
 
@@ -19,7 +18,7 @@ async def sign_in(user: User, account: dict) -> None:
     await open_login(user)
     user.find("Username").type(account["username"])
     user.find("Password").type(account["password"])
-    user.find("Sign in").click()
+    click_button(user, "Sign in")
     await user.should_see("Recent Items", retries=20)
 
 
@@ -29,15 +28,20 @@ def set_value(user: User, label: str, value) -> None:
             element.value = value
 
 
-def click_button(user: User, text: str) -> None:
-    """Click the button labelled exactly `text` ("Update", not "Update All")."""
+def click_button(user: User, text: str, index: int = 0) -> None:
     with user:
-        buttons = {
-            button for button in user.find(kind=ui.button, content=text).elements
+        buttons = [
+            button
+            for button in user.find(kind=ui.button, content=text).elements
             if button.text == text
-        }
-    assert buttons, f"no button labelled {text!r}"
-    UserInteraction(user, buttons, text).click()
+        ]
+
+    assert len(buttons) > index, (
+        f"Expected button {text!r} at index {index}, "
+        f"but found {len(buttons)} matching buttons."
+    )
+
+    UserInteraction(user, {buttons[index]}, text).click()
 
 
 def click_icon_button(user: User, icon: str) -> None:
@@ -61,15 +65,14 @@ def click_menu_item(user: User, text: str) -> None:
     UserInteraction(user, items, text).click()
 
 
-def upload_file(user: User, filename: str, content: bytes, content_type: str) -> None:
+async def upload_file(user: User, filename: str, content: bytes, content_type: str) -> None:
     """Simulate picking a file in the page's ui.upload."""
-    upload = UploadFile(
-        io.BytesIO(content),
-        filename=filename,
-        headers=Headers({"content-type": content_type}),
-    )
     with user:
-        user.find(kind=ui.upload).elements.pop().handle_uploads([upload])
+        upload_element = user.find(kind=ui.upload).elements.pop()
+
+    await upload_element.handle_uploads([
+        ui.upload.SmallFileUpload(filename, content_type, content)
+    ])
 
 
 def make_backend_unreachable(monkeypatch) -> None:
