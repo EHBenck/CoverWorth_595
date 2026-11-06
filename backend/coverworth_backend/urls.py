@@ -83,6 +83,7 @@ urlpatterns = [
     path("api/auth/logout/", views.auth_logout, name="auth-logout"),
     path("api/account/", views.account_api, name="account-api"),
     path("api/account/password/", views.change_password_api, name="change-password-api"),
+    path("api/account/delete/", views.delete_account_api, name="delete-account-api"),
     path("api/dashboard/", views.dashboard_summary, name="dashboard-summary"),
     path("api/items/", views.item_list, name="item-list"),
     path("api/inventory/<uuid:inventory_id>/categories/", views.category_list_api, name="category-list-api"),

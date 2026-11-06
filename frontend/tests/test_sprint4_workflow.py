@@ -114,6 +114,8 @@ async def test_primary_workflow_through_the_pages(user: User, api, run_valuation
     click_button(user, "Create")
     await user.should_see("Created inventory: Garage", retries=20)
 
+    await user.should_see(marker="inventory-location-filter", retries=60)
+    
     inventories = api.get("/api/inventories/").json()["inventories"]
     garage_id = next(inv["public_id"] for inv in inventories if inv["name"] == "Garage")
     api.post("/api/inventories/select/", json={"inventory_id": garage_id})

@@ -1,6 +1,7 @@
 """Helpers shared by the NiceGUI simulated-user tests."""
 
 import io
+import inspect
 
 from nicegui import ui
 from nicegui.testing import User
@@ -67,13 +68,23 @@ def click_menu_item(user: User, text: str) -> None:
 
 
 async def upload_file(user: User, filename: str, content: bytes, content_type: str) -> None:
-    """Simulate picking a file in the page's ui.upload."""
+    """Use the real upload handler on both supported NiceGUI event formats."""
     with user:
         upload_element = user.find(kind=ui.upload).elements.pop()
 
-    await upload_element.handle_uploads([
-        ui.upload.SmallFileUpload(filename, content_type, content)
-    ])
+        if hasattr(ui.upload, "SmallFileUpload"):
+            upload = ui.upload.SmallFileUpload(filename, content_type, content)
+        else:
+            from starlette.datastructures import Headers, UploadFile
+
+            upload = UploadFile(
+                filename=filename,
+                file=io.BytesIO(content),
+                headers=Headers({"content-type": content_type}),
+            )
+        result = upload_element.handle_uploads([upload])
+        if inspect.isawaitable(result):
+            await result
 
 
 def make_backend_unreachable(monkeypatch) -> None:

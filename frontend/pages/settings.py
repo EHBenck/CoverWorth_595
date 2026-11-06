@@ -7,9 +7,6 @@ from utilities.nav_wrapper import build_app_shell
 from utilities.password_rules import show_password_rules
 
 # SETTINGS PAGE
-# -----------------------------------------------------------
-# TODO:
-#   - Account deletion workflow
 # ============================================================
 
 
@@ -649,6 +646,105 @@ async def settings_page():
                                 "Update password", on_click=change_password
                             ).props("unelevated no-caps color=primary")
 
+                # DELETE ACCOUNT DIALOG
+                # =================================================
+                with ui.dialog().props("persistent").mark(
+                    "delete-account-dialog"
+                ) as delete_dialog:
+                    with ui.card().classes("w-[480px] max-w-full p-6 gap-4"):
+                        ui.label("Delete your account?").classes(
+                            "text-xl font-bold text-red-700"
+                        )
+                        ui.label(
+                            "This permanently deletes your CoverWorth account and "
+                            "cannot be undone. The following will be removed:"
+                        ).classes("text-sm")
+                        with ui.column().classes("gap-1 px-1"):
+                            for consequence in (
+                                "All of your inventories, including archived ones",
+                                "Every item, category, and location in them",
+                                "Uploaded photos, receipts, and documents",
+                                "Valuation history",
+                            ):
+                                with ui.row().classes("items-center gap-2 no-wrap"):
+                                    ui.icon("remove_circle_outline").classes(
+                                        "text-sm text-red-600"
+                                    )
+                                    ui.label(consequence).classes("text-sm muted")
+                        ui.label(
+                            "You will be signed out, and your username and email "
+                            "can be used to register again."
+                        ).classes("text-sm muted")
+
+                        delete_password = (
+                            ui.input("Enter your password to confirm", password=True)
+                            .props("outlined autocomplete=current-password")
+                            .classes("w-full")
+                            .mark("delete-account-password")
+                        )
+                        delete_error = (
+                            ui.label().classes("text-sm text-negative").props("role=alert")
+                        )
+
+                        def reset_delete_form() -> None:
+                            delete_password.value = ""
+                            _show_field_errors({"password": delete_password}, {})
+                            delete_error.text = ""
+
+                        async def delete_account() -> None:
+                            if state["busy"]:
+                                return
+                            delete_error.text = ""
+                            _show_field_errors({"password": delete_password}, {})
+
+                            state["busy"] = True
+                            controls = (confirm_delete, delete_cancel, delete_password)
+                            for control in controls:
+                                control.disable()
+                            try:
+                                await run.io_bound(
+                                    _account_request,
+                                    dict(app.storage.user.get("auth_cookies", {})),
+                                    "POST",
+                                    "/api/account/delete/",
+                                    {"password": delete_password.value or ""},
+                                )
+                            except AccountSessionExpired:
+                                delete_dialog.close()
+                                _sign_in_again()
+                            except AccountApiError as error:
+                                _show_field_errors({"password": delete_password}, error.errors)
+                                delete_error.text = str(error)
+                            except requests.RequestException:
+                                delete_error.text = (
+                                    "Could not delete your account. Please try again."
+                                )
+                            else:
+                                # Django has already signed this session out. Drop every
+                                # NiceGUI value tied to the deleted account.
+                                app.storage.user.clear()
+                                delete_dialog.close()
+                                ui.notify("Your account was deleted.", type="positive")
+                                ui.navigate.to("/")
+                            finally:
+                                state["busy"] = False
+                                for control in controls:
+                                    control.enable()
+
+                        def cancel_delete() -> None:
+                            delete_dialog.close()
+                            reset_delete_form()
+
+                        with ui.row().classes("w-full justify-end gap-2"):
+                            delete_cancel = ui.button(
+                                "Cancel", on_click=cancel_delete
+                            ).props("flat no-caps").mark("cancel-account-delete")
+                            confirm_delete = ui.button(
+                                "Permanently delete account",
+                                icon="delete_forever",
+                                on_click=delete_account,
+                            ).props("unelevated no-caps color=negative")
+
                 # SECURITY
                 # =================================================
                 with ui.card().classes("settings-card " "w-full p-6 gap-4").props(
@@ -719,8 +815,5 @@ async def settings_page():
                         ui.button(
                             "Delete Account",
                             icon="delete_forever",
-                            on_click=lambda: ui.notify(
-                                ("Account deletion is " "not implemented yet."),
-                                type="warning",
-                            ),
+                            on_click=delete_dialog.open,
                         ).props("outline " "color=negative " "no-caps")

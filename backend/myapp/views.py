@@ -318,6 +318,60 @@ def change_password_api(request):
     update_session_auth_hash(request, user)
     return JsonResponse({"success": True})
 
+
+def _delete_attachment_files(storage, names):
+    """Remove uploaded files once their rows are gone. A file that is already
+    missing or locked must not undo a deletion that has been committed."""
+    for name in names:
+        try:
+            storage.delete(name)
+        except OSError:
+            pass
+
+
+@require_POST
+def delete_account_api(request):
+    """Permanently delete the signed-in user's own account after re-checking
+    their password, then sign this session out.
+
+    Deleting the user cascades to their inventories, categories, locations,
+    items, attachments and valuations. Uploaded files are removed from
+    storage only after the database transaction commits, so a failed
+    deletion leaves both the account and its files intact.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid request body."}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
+
+    password = data.get("password", "")
+    if not isinstance(password, str) or not password:
+        errors = {"password": ["Password is required."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    user = request.user
+    if not user.check_password(password):
+        errors = {"password": ["Your password is incorrect."]}
+        return JsonResponse({"error": errors["password"][0], "errors": errors}, status=400)
+
+    # Archived rows are deleted too, so collect every file the user owns.
+    attachments = Attachment.objects.filter(item__inventory__owner=user).exclude(file="")
+    storage = Attachment._meta.get_field("file").storage
+    file_names = list(attachments.values_list("file", flat=True))
+
+    with transaction.atomic():
+        user.delete()
+        transaction.on_commit(lambda: _delete_attachment_files(storage, file_names))
+
+    logout(request)
+    return JsonResponse({"success": True, "deleted": True})
+
 ACTIVE_INVENTORY_KEY = "active_inventory_id"
 
 def _lock_inventory_owner(user):
@@ -989,7 +1043,8 @@ def _save_item_form_response(request, inventory, item=None):
         if editing:
             item = get_object_or_404(
                 Item.objects.select_related("location"),
-                pk=item.pk, inventory=inventory, archived_at__isnull=True,
+                Q(archived_at__isnull=True) | Q(is_archived=True),
+                pk=item.pk, inventory=inventory,
             )
         form = ItemForm(inventory, data, instance=item)
         if not form.is_valid():
@@ -1139,6 +1194,7 @@ def location_detail_api(request, location_id):
 
 
 def _filter_items_by_location(items, inventory, value):
+    value = (value or "").strip()
     if not value:
         return items
     if value == "unassigned":
@@ -1177,28 +1233,6 @@ def item_list(request):
         )
         .order_by("-updated_at")
     )
-
-    location_param = request.GET.get("location", "").strip()
-    if location_param == "unassigned":
-        items = items.filter(location__isnull=True)
-    elif location_param:
-        try:
-            location_id = UUID(location_param)
-        except ValueError:
-            location_id = None
-        location = None
-        if location_id is not None:
-            location = Location.objects.filter(
-                public_id=location_id,
-                inventory=active_inventory,
-                archived_at__isnull=True,
-            ).first()
-        if location is None:
-            return JsonResponse(
-                {"success": False, "errors": {"location": ["Choose a valid location."]}},
-                status=400,
-            )
-        items = items.filter(location=location)
 
     query = request.GET.get("q", "").strip()
     if query:
@@ -1419,35 +1453,55 @@ def edit_item_api(request, item_id):
         }, status=500)
 
 def _set_item_archived(request, item_id, archive):
-    """Archive an active item, or restore one the user archived."""
-    if not request.user.is_authenticated:
+    """Archive or restore an item without reviving an invalid location link."""
+    try:
+        authenticated = request.user.is_authenticated
+    except OperationalError as error:
+        return _inventory_busy_response(error)
+    if not authenticated:
         return JsonResponse({"success": False, "error": "Authentication required."}, status=401)
 
-    items = Item.objects.select_related("inventory").filter(
-        public_id=item_id,
-        inventory__archived_at__isnull=True,
-    )
-    if archive:
-        item = items.filter(archived_at__isnull=True).first()
-    else:
-        item = items.filter(is_archived=True).first()
+    try:
+        with transaction.atomic():
+            # Location archival uses this same owner lock. A simultaneous restore
+            # must not leave an active item pointing at an archived location.
+            _lock_inventory_owner(request.user)
+            items = Item.objects.select_related("inventory", "location").filter(
+                public_id=item_id,
+                inventory__archived_at__isnull=True,
+            )
+            if archive:
+                item = items.filter(archived_at__isnull=True).first()
+            else:
+                item = items.filter(is_archived=True).first()
 
-    if item is None:
-        return JsonResponse({"success": False, "error": "Item not found."}, status=404)
-    if item.inventory.owner != request.user:
-        return JsonResponse(
-            {"success": False, "error": "You can only change items in your own inventory."},
-            status=403,
-        )
+            if item is None:
+                return JsonResponse({"success": False, "error": "Item not found."}, status=404)
+            if item.inventory.owner != request.user:
+                return JsonResponse(
+                    {"success": False, "error": "You can only change items in your own inventory."},
+                    status=403,
+                )
+            if not archive and item.location_id and (
+                item.location.inventory_id != item.inventory_id
+                or item.location.archived_at is not None
+            ):
+                raise ValidationError({
+                    "location": "Choose an active location in this inventory or unassign the item before restoring it."
+                })
 
-    item.is_archived = archive
-    item.archived_at = timezone.now() if archive else None
-    item.save(update_fields=["is_archived", "archived_at", "updated_at"])
+            item.is_archived = archive
+            item.archived_at = timezone.now() if archive else None
+            item.save(update_fields=["is_archived", "archived_at", "updated_at"])
 
-    return JsonResponse({
-        "success": True,
-        "message": f"Item '{item.name}' was {'archived' if archive else 'restored'}.",
-    })
+        return JsonResponse({
+            "success": True,
+            "message": f"Item '{item.name}' was {'archived' if archive else 'restored'}.",
+        })
+    except ValidationError as error:
+        return _field_validation_response(error)
+    except OperationalError as error:
+        return _inventory_busy_response(error)
 
 
 @require_POST
