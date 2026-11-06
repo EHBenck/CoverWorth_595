@@ -1,4 +1,12 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load configuration before page modules cache BACKEND_URL at import time.
+# Existing process environment variables keep precedence over the local file.
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
 from nicegui import ui
 from utilities.attachments import register_attachment_routes
 

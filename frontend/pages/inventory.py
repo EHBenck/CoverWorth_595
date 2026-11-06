@@ -1,5 +1,4 @@
 import asyncio
-from tkinter import dialog
 
 from nicegui import app, run, ui
 import requests
