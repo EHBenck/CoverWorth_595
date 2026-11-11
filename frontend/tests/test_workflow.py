@@ -116,11 +116,34 @@ async def test_login_with_wrong_password_shows_error(user: User, account) -> Non
 async def test_sign_out_returns_to_login_and_locks_pages(user: User, account) -> None:
     await sign_in(user, account)
 
+    await user.open("/reports")
+    await user.should_see(kind=ui.button, content="Sign out")
     user.find(kind=ui.button, content="Sign out").click()
     await user.should_see("Sign in to your account", retries=20)
 
     await user.open("/reports")
     await user.should_see("Sign in to your account", retries=20)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/dashboard",
+        "/inventory",
+        "/categories",
+        "/valuations",
+        "/reports",
+        "/settings",
+    ],
+)
+async def test_sign_out_is_visible_on_every_main_page(
+    user: User,
+    account,
+    path: str,
+) -> None:
+    await sign_in(user, account)
+    await user.open(path)
+    await user.should_see(kind=ui.button, content="Sign out", retries=20)
 
 
 # ------------------------------------------------------------

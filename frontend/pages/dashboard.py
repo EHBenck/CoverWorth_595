@@ -92,28 +92,6 @@ def show_login_page(error_message=""):
 
 
 
-async def sign_out():
-    session = authenticated_session()
-
-    try:
-        response = session.post(
-            f"{BACKEND_URL}/api/auth/logout/",
-            headers=csrf_headers(session),
-            timeout=5,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        ui.notify(
-            "The server could not confirm sign-out.",
-            type="negative",
-        )
-
-    app.storage.user.pop("auth_cookies", None)
-    app.storage.user.pop("username", None)
-
-    ui.navigate.to("/")
-
-
 # ------------------------------------------------------------------
 # GLOBAL STYLING
 # ------------------------------------------------------------------
@@ -487,7 +465,6 @@ async def dashboard_page():
     build_app_shell(
         "Dashboard",
         username=app.storage.user.get("username", "User"),
-        on_sign_out=sign_out,
     )
 
     with ui.column().classes(
@@ -605,4 +582,3 @@ async def dashboard_page():
         # ----------------------------------------------------------
 
         attention_banner(dashboard_data)
-
