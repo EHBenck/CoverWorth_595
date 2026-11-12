@@ -5,12 +5,6 @@ from nicegui import app, ui
 from backend_client import BACKEND_URL, authenticated_session
 from utilities.nav_wrapper import build_app_shell
 
-# TODO:
-#   - Add Django report generation endpoints
-#   - Download generated PDF / CSV reports
-#  - Add report preview functionality
-
-
 # STYLING
 # ============================================================
 ui.add_css(
@@ -177,8 +171,6 @@ ui.add_css(
 
 # DATA
 # ============================================================
-
-
 def load_report_data() -> (
     tuple[dict, str | None]
 ):  # Load the report summary and inventory ID from the dashboard endpoint.

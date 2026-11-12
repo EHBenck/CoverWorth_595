@@ -1,8 +1,7 @@
-from collections.abc import Callable
-
 import requests
 from nicegui import app, run, ui
 
+from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.attachments import attachment_url
 from utilities.inventory_search import SearchSessionExpired, search_items
 from utilities.inventory_switcher import InventoryApiError, show_inventory_switcher
@@ -92,6 +91,27 @@ def _initials(username: str) -> str:
     """First two letters of the username, uppercased."""
     letters = [c for c in username if c.isalpha()]
     return "".join(letters[:2]).upper() or "?"
+
+
+async def _sign_out() -> None:
+    session = authenticated_session()
+
+    try:
+        response = session.post(
+            f"{BACKEND_URL}/api/auth/logout/",
+            headers=csrf_headers(session),
+            timeout=5,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        ui.notify(
+            "The server could not confirm sign-out.",
+            type="negative",
+        )
+
+    app.storage.user.pop("auth_cookies", None)
+    app.storage.user.pop("username", None)
+    ui.navigate.to("/")
 
 
 def _navigation_item(
@@ -218,7 +238,6 @@ def _build_global_search() -> None:
 def build_app_shell(
     active_page: str,
     username: str = "Kevin M.",
-    on_sign_out: Callable[[], object] | None = None,
 ) -> None:
     with ui.left_drawer(
         value=True,
@@ -249,15 +268,9 @@ def build_app_shell(
         ui.space()
         _build_global_search()
         ui.space()
-        ui.button(icon="notifications_none").props("flat round color=grey-8")
         ui.avatar(_initials(username), color="primary", text_color="white").classes("ml-2")
         ui.label(username).classes("font-medium hidden md:block")
 
-        if on_sign_out:
-            ui.button("Sign out", on_click=on_sign_out, icon="logout").props(
-                "flat no-caps color=grey-8"
-            )
-        else:
-            ui.button(icon="keyboard_arrow_down").props(
-                "flat round dense color=grey-8"
-            )
+        ui.button("Sign out", on_click=_sign_out, icon="logout").props(
+            "flat no-caps color=grey-8"
+        )

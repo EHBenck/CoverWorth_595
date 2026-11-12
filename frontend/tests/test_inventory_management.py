@@ -65,7 +65,10 @@ async def test_editing_name_and_description_refreshes_settings_and_switcher(user
     assert [(row["public_id"], row["name"], row["description"]) for row in rows] == [
         (home_id, "Family home", "Furniture and electronics"),
     ]
-    selector = await switcher(user)
+    await user.should_see(kind=ui.select, content="Family home", retries=20)
+    selector = next(
+        iter(user.find(kind=ui.select, content="Family home").elements)
+    )
     assert selector.value == home_id
     assert selector.options[home_id] == "Family home"
 
@@ -139,6 +142,7 @@ async def test_last_inventory_is_disabled_and_existing_new_flow_creates_replacem
     user.find("Inventory name").type("New apartment")
     click_button(user, "Create")
     await user.should_see("Created inventory: New apartment", retries=20)
+    await user.should_see("Add Item", retries=20)
     await user.open("/settings")
     await user.should_see(marker=f"inventory-{home_id}", retries=20)
     assert next(iter(user.find(marker=f"archive-inventory-{home_id}").elements)).enabled

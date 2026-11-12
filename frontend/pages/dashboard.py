@@ -92,28 +92,6 @@ def show_login_page(error_message=""):
 
 
 
-async def sign_out():
-    session = authenticated_session()
-
-    try:
-        response = session.post(
-            f"{BACKEND_URL}/api/auth/logout/",
-            headers=csrf_headers(session),
-            timeout=5,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        ui.notify(
-            "The server could not confirm sign-out.",
-            type="negative",
-        )
-
-    app.storage.user.pop("auth_cookies", None)
-    app.storage.user.pop("username", None)
-
-    ui.navigate.to("/")
-
-
 # ------------------------------------------------------------------
 # GLOBAL STYLING
 # ------------------------------------------------------------------
@@ -242,9 +220,8 @@ def value_by_category_card(category_data) -> None:
     with ui.card().classes("dashboard-card w-full p-6 h-full"):
         
         # Header
-        with ui.row().classes("w-full items-center justify-between mb-2"):
+        with ui.row().classes("w-full items-center mb-2"):
             ui.label("Value by Category").classes("section-title")
-            ui.button(icon="more_vert").props("flat round dense color=grey-7")
 
         # Main Layout: Chart on the left, Custom Legend on the right
         with ui.row().classes("w-full items-center justify-between gap-4"):
@@ -459,6 +436,7 @@ def attention_banner(dashboard_data) -> None:
             ui.button(
                 "Review",
                 icon="arrow_forward",
+                on_click=lambda: ui.navigate.to("/valuations"),
             ).props(
                 "flat color=primary no-caps"
             ).classes(
@@ -487,7 +465,6 @@ async def dashboard_page():
     build_app_shell(
         "Dashboard",
         username=app.storage.user.get("username", "User"),
-        on_sign_out=sign_out,
     )
 
     with ui.column().classes(
@@ -605,4 +582,3 @@ async def dashboard_page():
         # ----------------------------------------------------------
 
         attention_banner(dashboard_data)
-

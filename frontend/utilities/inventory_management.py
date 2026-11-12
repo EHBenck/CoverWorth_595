@@ -112,8 +112,7 @@ def show_inventory_management() -> None:
                     app.storage.user["auth_cookies"] = cookies
                     edit_dialog.close()
                     ui.notify("Inventory updated.", type="positive")
-                    # Rebuild both the settings list and the shared switcher.
-                    ui.navigate.to("/settings")
+                    ui.navigate.reload()
                 finally:
                     state["busy"] = False
                     for control in (save_button, edit_cancel, name_input, description_input):

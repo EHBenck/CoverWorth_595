@@ -189,12 +189,6 @@ CATEGORY_SUMMARIES = [
     },
 ]
 
-_INVENTORY_ITEMS_BY_ID = {item["id"]: item for item in INVENTORY_ITEMS}
-VALUATION_ITEMS = [
-    {**_INVENTORY_ITEMS_BY_ID[item_id], **details}
-    for item_id, details in _VALUATION_DETAILS.items()
-]
-
 AI_PREVIEW = {
     "name": "Canon EOS R6",
     "current_estimate": 1850,
