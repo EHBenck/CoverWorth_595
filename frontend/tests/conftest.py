@@ -48,10 +48,8 @@ def pytest_collection_modifyitems(items):
     from tests import app_under_test
 
     for item in items:
-        if item.get_closest_marker("nicegui_main_file") is None:
-            item.add_marker(
-                pytest.mark.nicegui_main_file(app_under_test.__file__)
-            )
+        if item.get_closest_marker("module_under_test") is None:
+            item.add_marker(pytest.mark.module_under_test(app_under_test))
 
 
 @pytest.fixture(scope="session")

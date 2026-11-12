@@ -220,9 +220,8 @@ def value_by_category_card(category_data) -> None:
     with ui.card().classes("dashboard-card w-full p-6 h-full"):
         
         # Header
-        with ui.row().classes("w-full items-center justify-between mb-2"):
+        with ui.row().classes("w-full items-center mb-2"):
             ui.label("Value by Category").classes("section-title")
-            ui.button(icon="more_vert").props("flat round dense color=grey-7")
 
         # Main Layout: Chart on the left, Custom Legend on the right
         with ui.row().classes("w-full items-center justify-between gap-4"):
@@ -437,6 +436,7 @@ def attention_banner(dashboard_data) -> None:
             ui.button(
                 "Review",
                 icon="arrow_forward",
+                on_click=lambda: ui.navigate.to("/valuations"),
             ).props(
                 "flat color=primary no-caps"
             ).classes(

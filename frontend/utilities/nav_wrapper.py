@@ -268,7 +268,6 @@ def build_app_shell(
         ui.space()
         _build_global_search()
         ui.space()
-        ui.button(icon="notifications_none").props("flat round color=grey-8")
         ui.avatar(_initials(username), color="primary", text_color="white").classes("ml-2")
         ui.label(username).classes("font-medium hidden md:block")
 

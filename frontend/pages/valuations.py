@@ -5,7 +5,6 @@ from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
-from utilities.mockdata import AI_PREVIEW
 
 
 # ============================================================
@@ -21,10 +20,8 @@ from utilities.mockdata import AI_PREVIEW
 # ============================================================
 
 
-# ============================================================
 # CSS
 # ============================================================
-
 ui.add_css("""
     body {
         background: #f4f7fb;
