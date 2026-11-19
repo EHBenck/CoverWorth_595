@@ -13,6 +13,42 @@ from nicegui.element import Element
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 
+ui.add_css(
+    """
+    .inventory-switcher-select .q-field__control {
+        min-height: 42px;
+        border-radius: 10px;
+        background: #ffffff;
+    }
+
+    .inventory-switcher-select .q-field__native,
+    .inventory-switcher-select .q-field__input {
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .inventory-switcher-select .q-field__label {
+        color: #64748b;
+        font-size: 12px;
+    }
+
+    .inventory-switcher-new {
+        min-height: 40px;
+        border: 1px solid #dce3ec;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #1769c2;
+        padding: 0 12px;
+    }
+
+    .inventory-switcher-new:hover {
+        background: #f8fafc;
+    }
+    """,
+    shared=True,
+)
+
 
 class InventoryApiError(Exception):
     """An inventory request failed or the API rejected it."""
@@ -56,7 +92,8 @@ def _post_inventory(cookies: dict, endpoint: str, payload: dict) -> tuple[dict, 
 
 def _fetch_inventories(cookies: dict) -> tuple[dict[str, str], str | None]:
     response = authenticated_session(cookies).get(
-        f"{BACKEND_URL}/api/inventories/", timeout=5,
+        f"{BACKEND_URL}/api/inventories/",
+        timeout=5,
     )
     response.raise_for_status()
     result = response.json()
@@ -145,12 +182,18 @@ def _render_inventory_switcher(
         finally:
             dropdown.enable()
             state["busy"] = False
-            
+
     with ui.dialog() as create_dialog:
         with ui.card().classes("w-96 max-w-full p-5 gap-4"):
             ui.label("Create Inventory").classes("text-xl font-bold")
-            name_input = ui.input("Inventory name").props("outlined autofocus").classes("w-full")
-            description_input = ui.textarea("Description (optional)").props("outlined").classes("w-full")
+            name_input = (
+                ui.input("Inventory name").props("outlined autofocus").classes("w-full")
+            )
+            description_input = (
+                ui.textarea("Description (optional)")
+                .props("outlined")
+                .classes("w-full")
+            )
 
             async def create_inventory() -> None:
                 name = (name_input.value or "").strip()
@@ -163,20 +206,41 @@ def _render_inventory_switcher(
                 state["busy"] = True
                 create_button.disable()
                 try:
-                    _, new_cookies = await asyncio.to_thread(
+                    result, new_cookies = await asyncio.to_thread(
                         _post_inventory,
                         dict(app.storage.user.get("auth_cookies", {})),
                         "/api/inventories/",
                         {"name": name, "description": description_input.value or ""},
                     )
-                except (requests.RequestException, InventoryApiError, ValueError) as error:
+                except (
+                    requests.RequestException,
+                    InventoryApiError,
+                    ValueError,
+                ) as error:
                     ui.notify(f"Could not create inventory: {error}", type="negative")
                 else:
                     app.storage.user["auth_cookies"] = new_cookies
+                    new_inventory = result.get("inventory",{})
+                    new_id = new_inventory.get("public_id")
+
+                    if new_id:
+                        options[new_id] = new_inventory.get("name", name)
+                        state["active_id"] = new_id
+                        dropdown.options = options
+                        dropdown.value = new_id
+                        dropdown.update()
+
                     create_dialog.close()
-                    ui.notify(f"Created inventory: {name}", type="positive")
-                    # Django automatically selects the inventory it creates.
-                    ui.navigate.to("/inventory")
+
+                    name_input.value = ""
+                    description_input.value = ""
+
+                    ui.notify(
+                        f"Created inventory: {name}",
+                        type="positive",
+                    )
+
+                    ui.navigate.reload()
                 finally:
                     create_button.enable()
                     state["busy"] = False
@@ -188,13 +252,22 @@ def _render_inventory_switcher(
                 )
 
     with container:
-        with ui.row().classes("items-center gap-1"):
-            dropdown = ui.select(
-                options=options,
-                value=active_id,
-                label="Inventory",
-                on_change=select_inventory,
-            ).props("outlined dense options-dense").classes("w-44 max-w-[28vw]")
-            ui.button("New", icon="add", on_click=create_dialog.open).props(
-                "flat dense no-caps color=primary"
-            ).tooltip("Create inventory")
+        with ui.row().classes("items-center gap-2"):
+            dropdown = (
+                ui.select(
+                    options=options,
+                    value=active_id,
+                    label="Inventory",
+                    on_change=select_inventory,
+                )
+                .props("outlined " "dense " "options-dense " "prepend-icon=inventory_2")
+                .classes("inventory-switcher-select " "w-52 max-w-[30vw]")
+            )
+
+            ui.button(
+                "New",
+                icon="add",
+                on_click=create_dialog.open,
+            ).props(
+                "flat " "dense " "no-caps"
+            ).classes("inventory-switcher-new").tooltip("Create inventory")
