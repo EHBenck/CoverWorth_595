@@ -48,6 +48,13 @@ ui.add_css("""
         box-shadow: none;
     }
 
+    .q-avatar__content {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        line-height: 1 !important;
+    }
+
     .page-content-frame.page-content-frame {
         box-sizing: border-box;
         width: 100%;
@@ -87,10 +94,27 @@ ui.add_css("""
 """, shared=True)
 
 
-def _initials(username: str) -> str:
-    """First two letters of the username, uppercased."""
-    letters = [c for c in username if c.isalpha()]
-    return "".join(letters[:2]).upper() or "?"
+def _get_display_name(username: str | None = None) -> str:
+    first = (app.storage.user.get("first_name") or "").strip()
+    last = (app.storage.user.get("last_name") or "").strip()
+
+    if first or last:
+        return " ".join(part for part in (first, last) if part)
+
+    return (
+        username
+        or app.storage.user.get("username")
+        or "Account"
+    )
+
+
+def _initials(full_name: str) -> str:
+    parts = full_name.split()
+
+    if len(parts) >= 2:
+        return f"{parts[0][0]}{parts[-1][0]}".upper()
+
+    return parts[0][:2].upper() if parts else "?"
 
 
 async def _sign_out() -> None:
@@ -237,8 +261,9 @@ def _build_global_search() -> None:
 
 def build_app_shell(
     active_page: str,
-    username: str = "Kevin M.",
+    username: str | None = None,
 ) -> None:
+    display_name = _get_display_name(username)
     with ui.left_drawer(
         value=True,
         top_corner=True,
@@ -268,8 +293,14 @@ def build_app_shell(
         ui.space()
         _build_global_search()
         ui.space()
-        ui.avatar(_initials(username), color="primary", text_color="white").classes("ml-2")
-        ui.label(username).classes("font-medium hidden md:block")
+        with ui.avatar(
+            color="primary",
+            text_color="white",
+        ).classes("ml-2 select-none"):
+            ui.label(_initials(display_name)).classes(
+                "font-serif font-normal leading-none -translate-y-[0.25px]"
+            )
+            
 
         ui.button("Sign out", on_click=_sign_out, icon="logout").props(
             "flat no-caps color=grey-8"

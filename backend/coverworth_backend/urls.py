@@ -76,6 +76,7 @@ urlpatterns = [
     path('api/item/<uuid:item_id>/attachments/', views.item_attachments_api, name='item_attachments_api'),
     path('api/attachment/<uuid:attachment_id>/', views.attachment_detail_api, name='attachment_detail_api'),
     path('api/attachment/<uuid:attachment_id>/file/', views.attachment_file_api, name='attachment-file'),
+    path("api/attachment/<uuid:attachment_id>/primary/", views.attachment_primary_api, name="attachment-primary"),
     path("api/health/", health_check, name="health-check"),
     path("api/auth/csrf/", views.auth_csrf, name="auth-csrf"),
     path("api/auth/login/", views.auth_login, name="auth-login"),

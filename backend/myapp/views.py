@@ -78,7 +78,12 @@ def auth_login(request):
         return JsonResponse({"error": "Invalid username or password."}, status=401)
 
     login(request, user)
-    return JsonResponse({"authenticated": True, "username": user.get_username()})
+    return JsonResponse({
+        "authenticated": True,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+    })
 
 
 @require_POST
@@ -156,7 +161,7 @@ def auth_register(request):
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return JsonResponse(
-        {"authenticated": True, "username": user.get_username()},
+        {"authenticated": True, "username": user.get_username(), "first_name": user.first_name, "last_name": user.last_name},
         status=201,
     )
 
@@ -1832,10 +1837,60 @@ def attachment_detail_api(request, attachment_id):
     if attachment.item.inventory.owner != request.user:
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
+    was_cover = attachment.is_primary
     attachment.archived_at = timezone.now()
-    attachment.save(update_fields=["archived_at"])
-
+    attachment.is_primary = False
+    attachment.save(update_fields=["archived_at", "is_primary"])
+    
+    if was_cover and attachment.file_type == "photo":
+        # Deleting the cover photo promotes the newest remaining photo.
+        replacement = attachment.item.attachments.filter(
+            file_type="photo",
+            archived_at__isnull=True,
+        ).order_by("-uploaded_at").first()
+        if replacement is not None:
+            replacement.is_primary = True
+            replacement.save(update_fields=["is_primary"])
+    
     return JsonResponse({"success": True, "message": "Attachment deleted successfully."})
+    
+    
+@require_POST
+def attachment_primary_api(request, attachment_id):
+    """Make one photo the cover photo of its item."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+    
+    attachment = Attachment.objects.filter(
+        Q(item__archived_at__isnull=True) | Q(item__is_archived=True),
+        public_id=attachment_id,
+        archived_at__isnull=True,
+        item__inventory__archived_at__isnull=True,
+    ).select_related("item__inventory").first()
+    if attachment is None:
+        return JsonResponse({"success": False, "error": "Attachment not found."}, status=404)
+    if attachment.item.inventory.owner != request.user:
+        return JsonResponse({"success": False, "error": "Access denied."}, status=403)
+    if attachment.file_type != "photo":
+        return JsonResponse(
+            {"success": False, "error": "Only photos can be the cover photo."},
+            status=400,
+        )
+    
+    with transaction.atomic():
+        Attachment.objects.filter(
+            item=attachment.item,
+            is_primary=True,
+        ).exclude(pk=attachment.pk).update(is_primary=False)
+        if not attachment.is_primary:
+            attachment.is_primary = True
+            attachment.save(update_fields=["is_primary"])
+    
+    return JsonResponse({
+        "success": True,
+        "message": "Cover photo updated.",
+        "attachment": {"public_id": str(attachment.public_id), "is_primary": True},
+    })
 
 @require_POST
 def item_valuation_api(request, item_id):
