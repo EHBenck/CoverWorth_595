@@ -220,7 +220,7 @@ def _render_inventory_switcher(
                     ui.notify(f"Could not create inventory: {error}", type="negative")
                 else:
                     app.storage.user["auth_cookies"] = new_cookies
-                    new_inventory = result.get("inventory",{})
+                    new_inventory = result.get("inventory", {})
                     new_id = new_inventory.get("public_id")
 
                     if new_id:
@@ -240,7 +240,7 @@ def _render_inventory_switcher(
                         type="positive",
                     )
 
-                    ui.navigate.reload()
+                    ui.navigate.to("/inventory")
                 finally:
                     create_button.enable()
                     state["busy"] = False
