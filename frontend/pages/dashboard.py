@@ -324,6 +324,7 @@ def recent_items_card(recent_items) -> None:
             ui.button(
                 "View all",
                 icon="chevron_right",
+                on_click=lambda: ui.navigate.to("/inventory"),
             ).props(
                 "flat color=primary no-caps"
             )
