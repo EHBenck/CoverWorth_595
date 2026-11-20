@@ -5,6 +5,7 @@ from nicegui import app, run, ui
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.inventory_switcher import InventoryApiError, _api_error
+from utilities.page_states import end_session
 
 
 class InventorySessionExpired(InventoryApiError):
@@ -38,10 +39,7 @@ def _inventory_request(
 
 
 def _sign_in_again() -> None:
-    app.storage.user.pop("auth_cookies", None)
-    app.storage.user.pop("username", None)
-    ui.notify("Your session expired. Please sign in again.", type="warning")
-    ui.navigate.to("/")
+    end_session()
 
 
 def show_inventory_management() -> None:

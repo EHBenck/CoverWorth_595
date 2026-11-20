@@ -2,12 +2,21 @@ from datetime import date, datetime
 from unicodedata import name
 
 import requests
-from nicegui import app, ui
+from nicegui import app, run, ui
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
 from utilities.location_management import LocationControls, _sign_in_again
+from utilities.page_states import (
+    BACKEND_UNAVAILABLE,
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    request_failed,
+    show_error_state,
+    show_item_not_found,
+)
 from utilities.uploads import read_upload
 
 
@@ -92,29 +101,37 @@ ui.add_css(
 )
 
 
-async def load_item_data(item_id: str) -> dict:
-    """Fetch the item and available categories."""
+def load_item_data(item_id: str, cookies: dict) -> dict:
+    """Fetch the item and available categories.
+
+    A missing item returns an empty "item"; a server or connection failure
+    raises, so it is never shown as "not found".
+    """
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/item/{item_id}/edit/",
             timeout=5,
         )
+        if response.status_code == 401:
+            raise SessionExpired()
+        # Malformed, missing, archived, and other users' items all answer 4xx.
+        if 400 <= response.status_code < 500:
+            return {"item": {}, "categories": []}
         response.raise_for_status()
 
         data = response.json()
 
-        if data.get("success"):
-            return {
-                "item": data.get("item", {}),
-                "categories": data.get("categories", []),
-                "locations": data.get("locations"),
-            }
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("this item", error)) from error
 
-        return {"item": {}, "categories": []}
+    if data.get("success"):
+        return {
+            "item": data.get("item", {}),
+            "categories": data.get("categories", []),
+            "locations": data.get("locations"),
+        }
 
-    except requests.RequestException as error:
-        print(f"Error loading item: {error}")
-        return {"item": {}, "categories": []}
+    return {"item": {}, "categories": []}
 
 
 @ui.page("/edit-item/{item_id}")
@@ -132,21 +149,33 @@ async def edit_item_page(item_id: str):
         username=app.storage.user.get("username", "User"),
     )
 
-    data = await load_item_data(item_id)
+    with ui.column().classes(
+        "page-content-frame items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading item...").classes("muted")
+
+    try:
+        data = await run.io_bound(
+            load_item_data,
+            item_id,
+            dict(app.storage.user.get("auth_cookies", {})),
+        )
+    except SessionExpired:
+        end_session()
+        return
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("page-content-frame p-7"):
+            show_error_state(str(error), title="Item unavailable")
+        return
+    loading.delete()
+
     item = data.get("item", {})
     categories = data.get("categories", [])
 
     if not item:
-        with ui.column().classes(
-            "w-full items-center justify-center p-10"
-        ):
-            ui.label("Item not found").classes(
-                "text-xl font-bold text-red-600"
-            )
-            ui.button(
-                "Back to Inventory",
-                on_click=lambda: ui.navigate.to("/inventory"),
-            )
+        show_item_not_found()
         return
 
     category_options = {
@@ -457,7 +486,7 @@ async def edit_item_page(item_id: str):
                                                             message = "Could not update cover photo."
                                                         ui.notify(message, type="negative")
                                                 except requests.RequestException:
-                                                    ui.notify("Connection error while updating cover photo.", type="negative")
+                                                    ui.notify(BACKEND_UNAVAILABLE, type="negative")
 
                                             ui.button("Set cover", on_click=set_cover).props(
                                                 "flat dense no-caps size=sm color=primary"
@@ -477,7 +506,7 @@ async def edit_item_page(item_id: str):
                                                 else:
                                                     ui.notify("Failed to delete attachment.", type="negative")
                                             except requests.RequestException:
-                                                ui.notify("Connection error.", type="negative")
+                                                ui.notify(BACKEND_UNAVAILABLE, type="negative")
 
                                         ui.button(icon="delete", on_click=delete_att).props("flat round dense color=red size=sm")
 
@@ -520,8 +549,8 @@ async def edit_item_page(item_id: str):
                                 except ValueError:
                                     message = "Upload failed."
                                 ui.notify(message, type="negative")
-                        except requests.RequestException as err:
-                            ui.notify(f"Error uploading: {err}", type="negative")
+                        except requests.RequestException:
+                            ui.notify(BACKEND_UNAVAILABLE, type="negative")
 
                     # Initial load
                     ui.timer(0.1, refresh_attachments, once=True)
@@ -770,8 +799,8 @@ async def edit_item_page(item_id: str):
                 )
                 error_label.visible = True
 
-            except requests.RequestException as error:
-                error_label.text = f"Connection error: {error}"
+            except requests.RequestException:
+                error_label.text = BACKEND_UNAVAILABLE
                 error_label.visible = True
 
         # Bottom actions

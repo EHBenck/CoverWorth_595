@@ -15,6 +15,7 @@ from nicegui import app, ui
 from nicegui.testing import User
 
 from tests.ui_helpers import click_button, make_backend_unreachable, open_login, set_value, sign_in
+from utilities.page_states import BACKEND_UNAVAILABLE
 
 
 PROTECTED_PATHS = [
@@ -340,33 +341,29 @@ async def test_login_and_register_report_unreachable_backend(user: User, account
     await user.should_see("Could not connect to the server. Try again.", retries=50)
 
 
-async def test_pages_still_render_when_backend_goes_down(user: User, account, api, monkeypatch) -> None:
+async def test_pages_explain_when_backend_goes_down(user: User, account, api, monkeypatch) -> None:
     api.create_category("Electronics")
     inventory_id = api.inventory_id()
     await sign_in(user, account)
 
     make_backend_unreachable(monkeypatch)
 
-    await user.open("/dashboard")
-    await user.should_see("Recent Items", retries=50)
-
-    await user.open(f"/edit-item/{uuid.uuid4()}")
-    await user.should_see("Item not found", retries=50)
-
-    await user.open(f"/item/{uuid.uuid4()}")
-    await user.should_see("Item not found", retries=50)
-
-    await user.open("/inventory")
-    await user.should_see("Could not load your inventory.", retries=50)
-
-    await user.open("/valuations")
-    await user.should_see("Could not load inventory", retries=50)
-
-    await user.open("/categories")
-    await user.should_see("Categories", retries=50)
-
-    await user.open("/reports")
-    await user.should_see("Reports", retries=50)
+    # A lost connection is reported as such, never as empty data or a missing item.
+    for path, title in [
+        ("/dashboard", "Dashboard unavailable"),
+        (f"/edit-item/{uuid.uuid4()}", "Item unavailable"),
+        (f"/item/{uuid.uuid4()}", "Item unavailable"),
+        ("/inventory", "Inventory unavailable"),
+        ("/valuations", "Valuations unavailable"),
+        ("/categories", "Categories unavailable"),
+        ("/reports", "Reports unavailable"),
+    ]:
+        await user.open(path)
+        await user.should_see(title, retries=50)
+        await user.should_see(BACKEND_UNAVAILABLE)
+        await user.should_see(marker="error-state")
+        await user.should_not_see("Item not found")
+        await user.should_not_see("No items yet")
 
     await user.open(f"/add-item/{inventory_id}")
     await user.should_see("Add Item", retries=50)
