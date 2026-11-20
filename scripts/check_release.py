@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     checks = [
+        ("Supported Python and pinned runtime", ROOT, ["scripts/check_runtime.py"]),
         ("Installed dependency consistency", ROOT, ["-m", "pip", "check"]),
         ("Credential hygiene", ROOT, ["scripts/check_secrets.py"]),
         ("Django system checks", ROOT / "backend", ["manage.py", "check"]),

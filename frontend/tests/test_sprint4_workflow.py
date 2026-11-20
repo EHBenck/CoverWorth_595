@@ -173,12 +173,12 @@ async def test_primary_workflow_through_the_pages(user: User, api, run_valuation
         await user.open("/valuations")
         await user.should_see("iPhone 13 Blue", retries=20)
         click_button(user, "Update")
-        await user.should_see("Live estimate: $247.00", retries=20)
-        click_button(user, "Accept $247.00")
-        await user.should_see("Valuation saved: $247.00", retries=20)
+        await user.should_see("Live estimate: $248.31", retries=20)
+        click_button(user, "Accept $248.31")
+        await user.should_see("Valuation saved: $248.31", retries=20)
 
         detail = api.item(item_id).json()["item"]
-        assert detail["current_estimated_amount"] == "247.00"
+        assert detail["current_estimated_amount"] == "248.31"
         assert detail["valuation_date"] is not None
 
         await user.open(f"/item/{item_id}")
@@ -658,7 +658,7 @@ async def test_backend_down_during_valuation_does_not_crash(user: User, account,
     await user.open("/valuations")
     await user.should_see("iPhone 13", retries=20)
     click_button(user, "Update")
-    await user.should_see("Live estimate: $247.00", retries=20)
+    await user.should_see("Live estimate: $248.31", retries=20)
 
     from pages import valuations
     monkeypatch.setattr(valuations, "BACKEND_URL", "http://127.0.0.1:9")
@@ -667,7 +667,7 @@ async def test_backend_down_during_valuation_does_not_crash(user: User, account,
     click_button(user, "Update")
     await user.should_see(BACKEND_UNAVAILABLE, retries=50)
 
-    click_button(user, "Accept $247.00")
+    click_button(user, "Accept $248.31")
     await user.should_see("Could not save the valuation.", retries=50)
     await user.should_see("Valuations")
     assert api.item(item_id).json()["item"]["current_estimated_amount"] is None

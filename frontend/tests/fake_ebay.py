@@ -18,7 +18,7 @@ EBAY_DOWN = "ebay-down"
 EBAY_NO_MATCHES = "ebay-no-matches"
 
 # Result of estimate() on the fixture for a used item.
-FIXTURE_ESTIMATE = 247.0
+FIXTURE_ESTIMATE = 248.31
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]

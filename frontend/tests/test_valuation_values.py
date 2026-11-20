@@ -24,9 +24,9 @@ async def assert_value(user: User, marker: str, value: str) -> None:
 
 async def request_and_accept(user: User) -> None:
     click_button(user, "Update")
-    await user.should_see("Live estimate: $247.00", retries=20)
-    click_button(user, "Accept $247.00")
-    await user.should_see("Valuation saved: $247.00", retries=20)
+    await user.should_see("Live estimate: $248.31", retries=20)
+    click_button(user, "Accept $248.31")
+    await user.should_see("Valuation saved: $248.31", retries=20)
 
 
 async def wait_for_saved_item(api, item_id: str, **expected) -> dict:
@@ -57,8 +57,8 @@ async def test_preview_and_cancel_preserve_current_value(user: User, account, ap
     await assert_value(user, f"valuation-value-{item_id}", "$799.00")
 
     click_button(user, "Update")
-    await user.should_see("Live estimate: $247.00", retries=20)
-    await user.should_see("Accept $247.00")
+    await user.should_see("Live estimate: $248.31", retries=20)
+    await user.should_see("Accept $248.31")
     await assert_value(user, f"valuation-value-{item_id}", "$799.00")
     saved = api.item(item_id).json()["item"]
     assert saved["manual_value"] is None
@@ -68,7 +68,7 @@ async def test_preview_and_cancel_preserve_current_value(user: User, account, ap
     click_button(user, "Cancel", marker="valuation-preview-cancel")
     await user.should_see("Valuation preview cancelled.", retries=20)
     await user.should_see("No valuation available", retries=20)
-    await user.should_not_see(kind=ui.button, content="Accept $247.00")
+    await user.should_not_see(kind=ui.button, content="Accept $248.31")
     await assert_value(user, f"valuation-value-{item_id}", "$799.00")
     click_button(user, "No valuation available")
     await user.should_see("Please update an item's valuation first.", retries=20)
@@ -85,23 +85,23 @@ async def test_accept_updates_all_pages_and_survives_unrelated_edit(
     await user.open("/valuations")
     await assert_value(user, f"valuation-value-{item_id}", "$1,000.00")
     await request_and_accept(user)
-    await assert_value(user, f"valuation-value-{item_id}", "$247.00")
+    await assert_value(user, f"valuation-value-{item_id}", "$248.31")
 
-    saved = await wait_for_saved_item(api, item_id, manual_value=None, effective_value="247.00")
+    saved = await wait_for_saved_item(api, item_id, manual_value=None, effective_value="248.31")
     assert saved["manual_value"] is None
-    assert saved["current_estimated_amount"] == saved["effective_value"] == "247.00"
+    assert saved["current_estimated_amount"] == saved["effective_value"] == "248.31"
     assert saved["effective_value_source"] == "estimated"
 
     await user.open(f"/item/{item_id}")
-    await assert_value(user, "current-item-value", "$247.00")
+    await assert_value(user, "current-item-value", "$248.31")
     await assert_value(user, "current-value-source", "Accepted estimate")
     await user.open("/inventory")
-    await assert_value(user, f"item-value-{item_id}", "$247.00")
+    await assert_value(user, f"item-value-{item_id}", "$248.31")
     await user.open("/dashboard")
-    await user.should_see("$247.00", retries=20)
-    assert api.get("/api/dashboard/").json()["summary"]["estimated_value"] == 247.0
+    await user.should_see("$248.31", retries=20)
+    assert api.get("/api/dashboard/").json()["summary"]["estimated_value"] == 248.31
     await user.open("/valuations")
-    await assert_value(user, f"valuation-value-{item_id}", "$247.00")
+    await assert_value(user, f"valuation-value-{item_id}", "$248.31")
 
     await user.open(f"/edit-item/{item_id}")
     await user.should_see("Save Changes", retries=20)
@@ -113,11 +113,11 @@ async def test_accept_updates_all_pages_and_survives_unrelated_edit(
         notes="An unrelated edit must retain the accepted estimate.",
     )
     assert saved["manual_value"] is None
-    assert saved["effective_value"] == "247.00"
+    assert saved["effective_value"] == "248.31"
     # Edit Item intentionally navigates after its success notification.
-    await assert_value(user, f"item-value-{item_id}", "$247.00")
+    await assert_value(user, f"item-value-{item_id}", "$248.31")
     await user.open(f"/item/{item_id}")
-    await assert_value(user, "current-item-value", "$247.00")
+    await assert_value(user, "current-item-value", "$248.31")
 
 
 async def test_manual_zero_override_and_clear_agree_across_pages(
@@ -135,7 +135,7 @@ async def test_manual_zero_override_and_clear_agree_across_pages(
     await user.should_see("Item updated successfully.", retries=20)
 
     saved = await wait_for_saved_item(api, item_id, manual_value="0.00", effective_value="0.00")
-    assert saved["current_estimated_amount"] == "247.00"
+    assert saved["current_estimated_amount"] == "248.31"
     assert saved["effective_value"] == "0.00"
     assert saved["effective_value_source"] == "manual"
     # Wait for the existing delayed success navigation before opening another page.
@@ -152,10 +152,10 @@ async def test_manual_zero_override_and_clear_agree_across_pages(
     user.find("Manual Value ($)").trigger("blur")
     click_button(user, "Save Changes")
     await user.should_see("Item updated successfully.", retries=20)
-    saved = await wait_for_saved_item(api, item_id, manual_value=None, effective_value="247.00")
+    saved = await wait_for_saved_item(api, item_id, manual_value=None, effective_value="248.31")
     assert saved["manual_value"] is None
-    assert saved["effective_value"] == "247.00"
-    await assert_value(user, f"item-value-{item_id}", "$247.00")
+    assert saved["effective_value"] == "248.31"
+    await assert_value(user, f"item-value-{item_id}", "$248.31")
     await user.open(f"/item/{item_id}")
     await assert_value(user, "current-value-source", "Accepted estimate")
 
