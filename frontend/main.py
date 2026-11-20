@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-
+#TEST COMMIT FOR GITHUB ACTIONS
 # Load configuration before page modules cache BACKEND_URL at import time.
 # Existing process environment variables keep precedence over the local file.
 load_dotenv(Path(__file__).resolve().parent / ".env")

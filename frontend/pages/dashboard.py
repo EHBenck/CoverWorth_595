@@ -65,9 +65,6 @@ def show_login_page(error_message=""):
                         headers=csrf_headers(session),
                         timeout=5,
                     )
-                    print("LOGIN STATUS:", response.status_code)
-                    print("LOGIN RESPONSE:", response.text)
-                    print("LOGIN COOKIES:", session.cookies.get_dict())
                     if response.status_code == 401:
                         error.text = "Invalid username or password."
                         return
@@ -78,6 +75,8 @@ def show_login_page(error_message=""):
                 
                 app.storage.user["auth_cookies"] = session.cookies.get_dict()
                 app.storage.user["username"] = response.json()["username"]
+                app.storage.user["first_name"] = response.json()["first_name"]
+                app.storage.user["last_name"] = response.json()["last_name"]
                 ui.navigate.to("/dashboard")
 
             ui.button("Sign in", on_click=submit_login, icon="login").props(

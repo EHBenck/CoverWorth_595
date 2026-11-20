@@ -171,19 +171,21 @@ def load_add_item_options(
             "categories": {},
         }
     
-def upload_photo(session, item_id, filename, content, content_type):
-    """Send the picked photo to the same attachment endpoint the edit page uses."""
-    try:
-        res = session.post(
-            f"{BACKEND_URL}/api/item/{item_id}/attachments/",   # <- copy the real path from edit_item.py
-            data={"file_type": "photo"},                         # <- match what the edit page sends
-            files={"file": (filename, content, content_type)},   # <- match the edit page's field name
-            headers=csrf_headers(session),
-            timeout=30,
-        )
-        return res.ok
-    except requests.RequestException:
-        return False
+def upload_attachment(session, item_id, filename, content, content_type):
+    """Upload one photo or receipt through the existing attachment endpoint."""
+    file_type = (
+        "receipt"
+        if "pdf" in (content_type or "").lower() or "receipt" in filename.lower()
+        else "photo"
+    )
+    response = session.post(
+        f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+        data={"file_type": file_type},
+        files={"file": (filename, content, content_type or "application/octet-stream")},
+        headers=csrf_headers(session),
+        timeout=30,
+    )
+    return response
 
 # PAGE
 # ============================================================
@@ -212,9 +214,8 @@ async def add_item_page(
 
     inventory_name = options["inventory_name"]
 
-    uploaded_file = None
-    uploaded_filename = "item_photo.jpg"
-    uploaded_content_type = "image/jpeg"
+    # Each entry is (filename, bytes, content_type, file_type).
+    uploaded_files = []
 
     # MAIN CONTENT
     # ========================================================
@@ -513,40 +514,59 @@ async def add_item_page(
                         ("Add a clear photo to make " "the item easier to identify.")
                     ).classes("text-sm muted")
 
-                    # Dashed visual placeholder container
                     with ui.column().classes(
-                        "photo-placeholder "
-                        "w-full "
-                        "items-center "
-                        "justify-center "
-                        "gap-2 p-5"
+                        "photo-placeholder w-full items-center justify-center gap-2 p-5"
                     ):
-
-                        ui.icon("add_photo_alternate").classes(
-                            "text-5xl " "text-slate-400"
+                        ui.icon("add_photo_alternate").classes("text-5xl text-slate-400")
+                        ui.label("Upload photos or receipts").classes(
+                            "font-semibold text-slate-700"
+                        )
+                        ui.label("PNG, JPG, or PDF. Select one photo as the cover.").classes(
+                            "text-xs muted"
                         )
 
-                        ui.label("Upload a photo").classes(
-                            "font-semibold " "text-slate-700"
-                        )
+                    attachment_list = ui.column().classes("w-full gap-2")
+                    cover_select = ui.select(
+                        options={}, label="Cover photo", value=None
+                    ).props("outlined dense").classes("w-full")
 
-                        ui.label(("PNG or JPG image")).classes("text-xs muted")
-
-                    async def photo_selected(e):
-                        nonlocal uploaded_file, uploaded_filename, uploaded_content_type
-                        uploaded_file, uploaded_filename, content_type = await read_upload(e)
-                        uploaded_content_type = content_type or "image/jpeg"
-                        ui.notify(
-                            f"Photo '{uploaded_filename}' selected. It will upload when you add the item.",
-                            type="positive",
+                    async def attachment_selected(e):
+                        file_bytes, filename, content_type = await read_upload(e)
+                        content_type = content_type or "application/octet-stream"
+                        file_type = (
+                            "receipt"
+                            if "pdf" in content_type.lower() or "receipt" in filename.lower()
+                            else "photo"
                         )
+                        uploaded_files.append((filename, file_bytes, content_type, file_type))
+                        index = len(uploaded_files) - 1
+                        if file_type == "photo" and cover_select.value is None:
+                            cover_select.value = str(index)
+                        photo_options = {
+                            str(i): entry[0]
+                            for i, entry in enumerate(uploaded_files)
+                            if entry[3] == "photo"
+                        }
+                        cover_select.options = photo_options
+                        cover_select.update()
+                        with attachment_list:
+                            with ui.row().classes(
+                                "w-full items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"
+                            ):
+                                ui.icon("receipt" if file_type == "receipt" else "image").classes(
+                                    "text-blue-600"
+                                )
+                                ui.label(filename).classes("text-sm truncate")
+                                ui.label("Receipt" if file_type == "receipt" else "Photo").classes(
+                                    "text-xs muted"
+                                )
+                        ui.notify(f"'{filename}' added to the item.", type="positive")
 
                     ui.upload(
-                        label="Choose Photo",
-                        on_upload=photo_selected,
+                        label="Choose Attachments",
+                        on_upload=attachment_selected,
                         auto_upload=True,
-                        max_files=1,
-                    ).props("accept=image/*").classes("w-full")
+                    ).props("multiple accept=image/*,.pdf flat bordered").classes("w-full")
 
                 # TIPS
                 # =============================================
@@ -578,18 +598,54 @@ async def add_item_page(
 
                     ui.label("Required Information").classes("font-semibold")
 
-                    for text in [
-                        "Item name",
-                        "Category",
-                        "Date acquired",
-                        "Purchase price",
+                    required_indicators = {}
+                    for required_key, required_text in [
+                        ("name", "Item name"),
+                        ("category", "Category"),
+                        ("date", "Date acquired"),
+                        ("price", "Purchase price"),
                     ]:
-
                         with ui.row().classes("items-center gap-2"):
+                            indicator = ui.icon("radio_button_unchecked").classes(
+                                "text-slate-400 text-lg"
+                            )
+                            ui.label(required_text).classes("text-sm text-slate-700")
+                            required_indicators[required_key] = indicator
 
-                            ui.icon("check_circle").classes("text-green-600 " "text-lg")
+        def update_required_status(*_):
+            """Keep the required-information checklist in sync with the form."""
+            name_complete = bool((name_input.value or "").strip())
+            category_complete = bool(category_select.value)
+            try:
+                acquired = date.fromisoformat(str(purchase_date_input.value or ""))
+                date_complete = acquired <= date.today()
+            except (TypeError, ValueError):
+                date_complete = False
+            try:
+                price = float(purchase_amount_input.value)
+                price_complete = price >= 0
+            except (TypeError, ValueError):
+                price_complete = False
 
-                            ui.label(text).classes("text-sm " "text-slate-700")
+            statuses = {
+                "name": name_complete,
+                "category": category_complete,
+                "date": date_complete,
+                "price": price_complete,
+            }
+            for key, complete in statuses.items():
+                indicator = required_indicators[key]
+                indicator.set_name("check_circle" if complete else "radio_button_unchecked")
+                indicator.classes(
+                    add="text-green-600" if complete else "text-slate-400",
+                    remove="text-slate-400" if complete else "text-green-600",
+                )
+
+        name_input.on_value_change(update_required_status)
+        category_select.on_value_change(update_required_status)
+        purchase_date_input.on_value_change(update_required_status)
+        purchase_amount_input.on_value_change(update_required_status)
+        update_required_status()
 
         # SUBMIT
         # ====================================================
@@ -702,11 +758,79 @@ async def add_item_page(
 
             item_id = result["item_id"]
 
-            if uploaded_file and not upload_photo(
-                session, item_id, uploaded_filename, uploaded_file, uploaded_content_type
-            ):
+            # Upload the selected cover photo first so it becomes the initial
+            # photo if the backend automatically promotes the first photo.
+            cover_index = cover_select.value
+            ordered_files = list(enumerate(uploaded_files))
+            if cover_index is not None:
+                ordered_files.sort(key=lambda pair: pair[0] != int(cover_index))
+
+            upload_failed = False
+            cover_uploaded = False
+            cover_attachment_id = None
+            for original_index, (filename, content, content_type, file_type) in ordered_files:
+                try:
+                    upload_response = upload_attachment(
+                        session, item_id, filename, content, content_type
+                    )
+                    if not upload_response.ok:
+                        upload_failed = True
+                        continue
+                    if str(original_index) == str(cover_index):
+                        cover_uploaded = True
+                        try:
+                            upload_data = upload_response.json()
+                            attachment_data = upload_data.get("attachment", upload_data)
+                            cover_attachment_id = (
+                                attachment_data.get("public_id")
+                                or attachment_data.get("id")
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+                except requests.RequestException:
+                    upload_failed = True
+
+            # The upload response may not include the attachment ID. Resolve it
+            # from the attachment list and explicitly set the selected cover.
+            if cover_index is not None and cover_uploaded:
+                if not cover_attachment_id:
+                    try:
+                        attachments_response = session.get(
+                            f"{BACKEND_URL}/api/item/{item_id}/attachments/",
+                            timeout=10,
+                        )
+                        attachments = attachments_response.json().get("attachments", [])
+                        cover_filename = uploaded_files[int(cover_index)][0]
+                        matching = [
+                            att for att in attachments
+                            if att.get("file_type") == "photo"
+                            and att.get("original_filename") == cover_filename
+                        ]
+                        if matching:
+                            cover_attachment_id = matching[-1].get("public_id")
+                    except (requests.RequestException, ValueError, TypeError):
+                        pass
+
+                if cover_attachment_id:
+                    try:
+                        primary_response = session.post(
+                            f"{BACKEND_URL}/api/attachment/{cover_attachment_id}/primary/",
+                            headers=csrf_headers(session),
+                            timeout=10,
+                        )
+                        if not primary_response.ok:
+                            upload_failed = True
+                    except requests.RequestException:
+                        upload_failed = True
+                else:
+                    upload_failed = True
+
+            if cover_index is not None and not cover_uploaded:
+                upload_failed = True
+
+            if upload_failed:
                 ui.notify(
-                    "Item added, but the photo didn't upload. You can add it here.",
+                    "Item was added, but one or more attachments could not be uploaded or the cover photo could not be set. You can finish in Edit Item.",
                     type="warning",
                 )
                 ui.navigate.to(f"/edit-item/{item_id}")

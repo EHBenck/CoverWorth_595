@@ -6,7 +6,6 @@ only location options, so an unfinished item form is never discarded.
 
 import inspect
 from collections.abc import Callable
-
 import requests
 from nicegui import app, run, ui
 

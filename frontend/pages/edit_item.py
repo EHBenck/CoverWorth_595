@@ -1,4 +1,3 @@
-
 from datetime import date, datetime
 from unicodedata import name
 
@@ -428,12 +427,42 @@ async def edit_item_page(item_id: str):
                                         icon_name = "receipt" if att["file_type"] == "receipt" else "image"
                                         ui.icon(icon_name).classes("text-xl text-blue-600")
                                         ui.label(att["original_filename"] or "Attachment").classes("text-sm font-medium truncate max-w-[160px]")
+                                        if att.get("file_type") == "photo" and att.get("is_primary"):
+                                            ui.badge("Cover Photo", color="positive").props("outline")
                                     
                                     with ui.row().classes("items-center gap-1"):
                                         file_url = attachment_url(att.get("file_url") or "")
                                         if file_url:
                                             ui.button(icon="visibility", on_click=lambda url=file_url: ui.navigate.to(url, new_tab=True)).props("flat round dense size=sm")
-                                        
+
+                                        if att.get("file_type") == "photo" and not att.get("is_primary"):
+                                            async def set_cover(aid=att["public_id"]):
+                                                try:
+                                                    session = authenticated_session()
+                                                    response = session.post(
+                                                        f"{BACKEND_URL}/api/attachment/{aid}/primary/",
+                                                        headers=csrf_headers(session),
+                                                        timeout=10,
+                                                    )
+                                                    if response.status_code == 401:
+                                                        _sign_in_again()
+                                                        return
+                                                    if response.ok:
+                                                        ui.notify("Cover photo updated.", type="positive")
+                                                        await refresh_attachments()
+                                                    else:
+                                                        try:
+                                                            message = response.json().get("error", "Could not update cover photo.")
+                                                        except ValueError:
+                                                            message = "Could not update cover photo."
+                                                        ui.notify(message, type="negative")
+                                                except requests.RequestException:
+                                                    ui.notify("Connection error while updating cover photo.", type="negative")
+
+                                            ui.button("Set cover", on_click=set_cover).props(
+                                                "flat dense no-caps size=sm color=primary"
+                                            )
+
                                         async def delete_att(aid=att["public_id"]):
                                             try:
                                                 session = authenticated_session()
@@ -454,10 +483,10 @@ async def edit_item_page(item_id: str):
 
                     # File Uploader
                     ui.upload(
-                        label="Upload Photo / Receipt",
+                        label="Upload Photos / Receipts",
                         auto_upload=True,
                         on_upload=lambda e: handle_file_upload(e),
-                    ).classes("w-full").props("accept=.jpg,.png,.jpeg,.pdf flat bordered")
+                    ).classes("w-full").props("multiple accept=.jpg,.png,.jpeg,.pdf flat bordered")
 
                     async def handle_file_upload(e):
                         try:
@@ -479,11 +508,18 @@ async def edit_item_page(item_id: str):
                                 headers=csrf_headers(session),
                                 timeout=15,
                             )
+                            if response.status_code == 401:
+                                _sign_in_again()
+                                return
                             if response.ok:
                                 ui.notify("File uploaded successfully!", type="positive")
                                 await refresh_attachments()
                             else:
-                                ui.notify("Upload failed.", type="negative")
+                                try:
+                                    message = response.json().get("error", "Upload failed.")
+                                except ValueError:
+                                    message = "Upload failed."
+                                ui.notify(message, type="negative")
                         except requests.RequestException as err:
                             ui.notify(f"Error uploading: {err}", type="negative")
 
@@ -507,19 +543,54 @@ async def edit_item_page(item_id: str):
                 with ui.card().classes("form-card w-full p-5 gap-2"):
                     ui.label("Required Information").classes("font-semibold")
 
-                    for required_text in [
-                        "Item name",
-                        "Category",
-                        "Date acquired",
-                        "Purchase price",
+                    required_indicators = {}
+                    for required_key, required_text in [
+                        ("name", "Item name"),
+                        ("category", "Category"),
+                        ("date", "Date acquired"),
+                        ("price", "Purchase price"),
                     ]:
                         with ui.row().classes("items-center gap-2"):
-                            ui.icon("check_circle").classes(
-                                "text-green-600 text-lg"
+                            indicator = ui.icon("radio_button_unchecked").classes(
+                                "text-slate-400 text-lg"
                             )
-                            ui.label(required_text).classes(
-                                "text-sm text-slate-700"
-                            )
+                            ui.label(required_text).classes("text-sm text-slate-700")
+                            required_indicators[required_key] = indicator
+
+        def update_required_status(*_):
+            """Keep the required-information checklist in sync with the form."""
+            name_complete = bool((name_input.value or "").strip())
+            category_complete = bool(category_select.value)
+            try:
+                acquired = date.fromisoformat(str(purchase_date_input.value or ""))
+                date_complete = acquired <= date.today()
+            except (TypeError, ValueError):
+                date_complete = False
+            try:
+                price = float(purchase_amount_input.value)
+                price_complete = price >= 0
+            except (TypeError, ValueError):
+                price_complete = False
+
+            statuses = {
+                "name": name_complete,
+                "category": category_complete,
+                "date": date_complete,
+                "price": price_complete,
+            }
+            for key, complete in statuses.items():
+                indicator = required_indicators[key]
+                indicator.set_name("check_circle" if complete else "radio_button_unchecked")
+                indicator.classes(
+                    add="text-green-600" if complete else "text-slate-400",
+                    remove="text-slate-400" if complete else "text-green-600",
+                )
+
+        name_input.on_value_change(update_required_status)
+        category_select.on_value_change(update_required_status)
+        purchase_date_input.on_value_change(update_required_status)
+        purchase_amount_input.on_value_change(update_required_status)
+        update_required_status()
 
         # Submission
         async def submit_form():
@@ -724,4 +795,3 @@ async def edit_item_page(item_id: str):
                 ).props(
                     "unelevated color=primary no-caps"
                 ).classes("px-6 py-2 rounded-lg")
-
