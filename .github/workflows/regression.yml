@@ -21,23 +21,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt
           python -m pip check
+
       - name: Check candidate files for private environment files and eBay credentials
         run: python scripts/check_secrets.py
+
       - name: Check Django and migration consistency
         working-directory: backend
         run: |
           python manage.py check
           python manage.py makemigrations --check --dry-run
+
       - name: Run backend regression and Sprint 7 integration tests
         working-directory: backend
         run: python manage.py test
@@ -47,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -54,14 +60,26 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             frontend/requirements.txt
+
       - name: Install application and integration dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r frontend/requirements.txt
           python -m pip check
+
+      - name: Debug CI environment
+        run: |
+          python --version
+          python -m pip show nicegui pytest pytest-asyncio
+          python -m pip check
+          echo "Working directory: $(pwd)"
+          echo "BACKEND_URL: $BACKEND_URL"
+          echo "PYTHONPATH: $PYTHONPATH"
+
       - name: Run frontend tests (required)
         working-directory: frontend
-        run: python -m pytest -v --durations=10 --basetemp="$RUNNER_TEMP/pytest"
+        run: python -m pytest -vv -s --durations=10 --basetemp="$RUNNER_TEMP/pytest"
+
       - name: Upload test server logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -76,6 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -83,11 +102,13 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             frontend/requirements.txt
+
       - name: Install dependencies from the clean checkout
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r frontend/requirements.txt
           python -m pip check
+
       - name: Migrate disposable database and start both real applications
         run: python scripts/smoke_start.py
 
