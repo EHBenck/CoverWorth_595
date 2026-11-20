@@ -240,17 +240,3 @@ def account(api):
     username = f"user_{uuid.uuid4().hex[:10]}"
     api.register(username)
     return {"username": username, "password": PASSWORD}
-
-
-import traceback
-from nicegui import ui as _ui
-
-_original_to = _ui.navigate.to
-
-def _spy_to(target, *args, **kwargs):
-    if target == "/":
-        print("\n=== REDIRECT TO / ===")
-        traceback.print_stack(limit=6)
-    return _original_to(target, *args, **kwargs)
-
-_ui.navigate.to = _spy_to
