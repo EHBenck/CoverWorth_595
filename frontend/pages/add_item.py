@@ -10,6 +10,7 @@ from backend_client import (
 )
 from utilities.nav_wrapper import build_app_shell
 from utilities.location_management import LocationControls, _sign_in_again
+from utilities.page_states import BACKEND_UNAVAILABLE
 from utilities.uploads import read_upload
 
 ui.add_css(
@@ -159,12 +160,8 @@ def load_add_item_options(
             "locations": data.get("locations"),
         }
 
-    except requests.RequestException as error:
-
-        print(
-            "Error loading Add Item options:",
-            error,
-        )
+    # The form still opens; the location control shows its own retry.
+    except requests.RequestException:
 
         return {
             "inventory_name": "Inventory",
@@ -721,7 +718,7 @@ async def add_item_page(
                     timeout=10,
                 )
             except requests.RequestException:
-                error_label.text = "Could not connect to the backend."
+                error_label.text = BACKEND_UNAVAILABLE
                 error_label.visible = True
                 return
 

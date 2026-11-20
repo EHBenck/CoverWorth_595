@@ -5,6 +5,7 @@ from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.attachments import attachment_url
 from utilities.inventory_search import SearchSessionExpired, search_items
 from utilities.inventory_switcher import InventoryApiError, show_inventory_switcher
+from utilities.page_states import end_session
 
 
 ui.add_css("""
@@ -197,10 +198,7 @@ def _build_global_search() -> None:
                 )
             except SearchSessionExpired:
                 close()
-                app.storage.user.pop("auth_cookies", None)
-                app.storage.user.pop("username", None)
-                ui.notify("Your session expired. Please sign in again.", type="warning")
-                ui.navigate.to("/")
+                end_session()
                 return
             except (requests.RequestException, InventoryApiError, ValueError):
                 matches = None
@@ -218,7 +216,7 @@ def _build_global_search() -> None:
                         "text-sm text-negative p-3"
                     )
                 elif not matches:
-                    ui.label("No items found").classes("text-sm text-grey-6 p-3")
+                    ui.label(f'No results for "{query}"').classes("text-sm text-grey-6 p-3")
                 for item in (matches or [])[:8]:
                     with ui.row().classes(
                         "global-search-result w-full items-center gap-3 px-3 py-2 rounded"

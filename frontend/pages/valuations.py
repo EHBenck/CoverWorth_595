@@ -5,6 +5,16 @@ from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
+from utilities.page_states import (
+    BACKEND_UNAVAILABLE,
+    NOT_ENOUGH_COMPARABLES,
+    VALUATION_UNAVAILABLE,
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    request_failed,
+    show_error_state,
+)
 
 
 # ============================================================
@@ -285,24 +295,22 @@ ui.add_css("""
 """, shared=True)
 
 def fetch_inventory_items(cookies):
-    """Load inventory items from Django."""
+    """Load inventory items from Django, raising instead of returning []."""
 
     if not cookies:
-        raise PermissionError("Please sign in first.")
+        raise SessionExpired()
 
-    session = authenticated_session(cookies)
-
-    response = session.get(
-        f"{BACKEND_URL}/api/items/",
-        timeout=10,
-    )
-
-    if response.status_code in (401, 403):
-        raise PermissionError("Please sign in again.")
-
-    response.raise_for_status()
-
-    return response.json().get("items", [])
+    try:
+        response = authenticated_session(cookies).get(
+            f"{BACKEND_URL}/api/items/",
+            timeout=10,
+        )
+        if response.status_code == 401:
+            raise SessionExpired()
+        response.raise_for_status()
+        return response.json().get("items", [])
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your inventory", error)) from error
 
 def fetch_primary_photo(item_id, cookies):
     """Return the raw file_url of an item's first photo attachment, or ''."""
@@ -334,10 +342,17 @@ def add_missing_photos(items, cookies):
 
 
 def raise_for_backend_error(response):
-    """Raise with the backend's own message (e.g. "Unable to retrieve eBay listings")."""
+    """Raise with a message that is safe to show, preferring the backend's own."""
+
+    if response.status_code == 401:
+        raise SessionExpired()
 
     if response.ok:
         return
+
+    # Django answers 502 when eBay itself failed; say so in plain words.
+    if response.status_code == 502:
+        raise requests.HTTPError(VALUATION_UNAVAILABLE, response=response)
 
     try:
         message = response.json().get("error")
@@ -345,7 +360,7 @@ def raise_for_backend_error(response):
         message = None
 
     raise requests.HTTPError(
-        message or f"Server returned {response.status_code}.",
+        message or "Something went wrong. Please try again.",
         response=response,
     )
 
@@ -354,7 +369,7 @@ def fetch_live_valuation(item_id, cookies):
     """Request a live valuation from Django."""
 
     if not cookies:
-        raise PermissionError("Please sign in first.")
+        raise SessionExpired()
 
     session = authenticated_session(cookies)
 
@@ -364,9 +379,6 @@ def fetch_live_valuation(item_id, cookies):
         timeout=45,
     )
 
-    if response.status_code in (401, 403):
-        raise PermissionError("Your session expired or access was denied.")
-
     raise_for_backend_error(response)
 
     return response.json()
@@ -375,7 +387,7 @@ def fetch_valuation_history(item_id, cookies):
     """Retrieve previous valuations for an inventory item."""
 
     if not cookies:
-        raise PermissionError("Please sign in first.")
+        raise SessionExpired()
 
     session = authenticated_session(cookies)
 
@@ -384,16 +396,13 @@ def fetch_valuation_history(item_id, cookies):
         timeout=15,
     )
 
-    if response.status_code in (401, 403):
-        raise PermissionError("Your session expired or access was denied.")
-
-    response.raise_for_status()
+    raise_for_backend_error(response)
 
     return response.json()
 
 def accept_live_valuation(item_id, valuation_run_id, cookies):
     if not cookies:
-        raise PermissionError("Please sign in first.")
+        raise SessionExpired()
 
     session = authenticated_session(cookies)
 
@@ -403,9 +412,6 @@ def accept_live_valuation(item_id, valuation_run_id, cookies):
         headers=csrf_headers(session),
         timeout=30,
     )
-
-    if response.status_code in (401, 403):
-        raise PermissionError("Your session expired or access was denied.")
 
     raise_for_backend_error(response)
     return response.json()
@@ -431,6 +437,14 @@ async def valuations_page():
         username=app.storage.user.get("username", "User"),
     )
 
+    with ui.column().classes(
+        "valuations-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading valuations...").classes("muted")
+
+    await ui.context.client.connected()
     cookies = app.storage.user.get("auth_cookies")
 
     try:
@@ -438,19 +452,31 @@ async def valuations_page():
             fetch_inventory_items,
             cookies,
         )
-
-    except (requests.RequestException, PermissionError) as error:
-        ui.notify(f"Could not load inventory: {error}", type="negative")
-        inventory_items = []
+    except SessionExpired:
+        end_session()
+        return
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("valuations-container page-content-frame p-7"):
+            show_error_state(str(error), title="Valuations unavailable")
+        return
 
     try:
         await run.io_bound(add_missing_photos, inventory_items, cookies)
-    except Exception as error:
-        print(f"[VALUATIONS] Could not load photos: {error}")
+    except Exception:
+        pass  # Photos are optional; rows fall back to an icon.
 
-    print("Inventory items from Django:", inventory_items)
-    
+    loading.delete()
+
     live_valuation = {"result": None, "photo_url": None}
+
+    def action_failed(error: Exception) -> str:
+        """Plain wording for a failed valuation action, never a raw exception."""
+        if isinstance(error, (requests.ConnectionError, requests.Timeout)):
+            return BACKEND_UNAVAILABLE
+        if isinstance(error, requests.HTTPError):
+            return str(error)
+        return "Something went wrong. Please try again."
 
     async def update_valuation(item):
         item_id = item.get("public_id")
@@ -473,16 +499,12 @@ async def valuations_page():
                 cookies,
             )
 
-        except PermissionError as error:
-            ui.notify(str(error), type="negative")
-            return
-
-        except requests.ConnectionError:
-            ui.notify("Could not connect to the backend.", type="negative")
+        except SessionExpired:
+            end_session()
             return
 
         except requests.RequestException as error:
-            ui.notify(f"Valuation request failed: {error}", type="negative")
+            ui.notify(action_failed(error), type="negative")
             return
 
         if result.get("estimate") is not None:
@@ -491,12 +513,8 @@ async def valuations_page():
                 type="positive",
             )
         else:
-            ui.notify(
-                "Not enough comparable listings to calculate a valuation.",
-                type="warning",
-            )
+            ui.notify(NOT_ENOUGH_COMPARABLES, type="warning")
 
-        print("Live valuation result:", result)
         live_valuation["result"] = result
         live_valuation["photo_url"] = item.get("primary_photo_url") or None
         # A fetched estimate is a preview. Saved values change only after Accept.
@@ -524,8 +542,15 @@ async def valuations_page():
                 cookies,
             )
 
-        except (requests.RequestException, PermissionError) as error:
-            ui.notify(f"Could not load valuation history: {error}", type="negative")
+        except SessionExpired:
+            end_session()
+            return
+
+        except (requests.RequestException, ValueError) as error:
+            ui.notify(
+                request_failed("this item's valuation history", error),
+                type="negative",
+            )
             return
 
         history = result.get("history", [])
@@ -622,9 +647,13 @@ async def valuations_page():
                 cookies,
             )
 
-        except (requests.RequestException, PermissionError) as error:
+        except SessionExpired:
+            end_session()
+            return
+
+        except requests.RequestException as error:
             ui.notify(
-                f"Could not save valuation: {error}",
+                f"Could not save the valuation. {action_failed(error)}",
                 type="negative",
             )
             return
@@ -1004,10 +1033,23 @@ async def valuations_page():
                     row_class="valuation-grid valuation-row",
                     render_header=render_valuation_header,
                     render_row=render_valuation_row,
-                    empty_icon="price_check",
-                    empty_title="No valuations found",
-                    empty_description="Try changing your search or filters.",
                     empty_padding="py-14",
+                    **(
+                        {
+                            "empty_icon": "search_off",
+                            "empty_title": "No items match these filters",
+                            "empty_description": "Try a different search, category, location, or tab.",
+                        }
+                        if inventory_items
+                        else {
+                            "empty_icon": "price_check",
+                            "empty_title": "No items to value yet",
+                            "empty_description": "Add items to your inventory, then come back to estimate their value.",
+                            "empty_action_label": "Go to Inventory",
+                            "empty_action_icon": "inventory_2",
+                            "on_empty_action": lambda: ui.navigate.to("/inventory"),
+                        }
+                    ),
                     render_footer=render_valuation_footer,
                 )
 
@@ -1264,12 +1306,18 @@ async def valuations_page():
                                 "text-2xl"
                             )
 
-                            ui.label(
-                                f'Estimate based on {preview["sample_count"]} '
-                                "comparable eBay listings."
-                            ).classes(
+                            if not result:
+                                callout = "Choose Update on an item to fetch an estimate from eBay."
+                            elif preview["estimate"] is None:
+                                callout = NOT_ENOUGH_COMPARABLES
+                            else:
+                                callout = (
+                                    f'Estimate based on {preview["sample_count"]} '
+                                    "comparable eBay listings."
+                                )
+                            ui.label(callout).classes(
                                 "text-sm"
-                            )
+                            ).mark("valuation-preview-callout")
 
                         ui.label(
                             "Accepting uses this estimate as the item's current value "

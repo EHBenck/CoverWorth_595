@@ -6,6 +6,14 @@ from utilities.nav_wrapper import build_app_shell
 from utilities.inventory_table import add_view_mode_toggle, render_data_table
 from utilities.attachments import attachment_url
 from utilities.location_management import LocationControls, LocationApiError, _location_request
+from utilities.page_states import (
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    load_failed,
+    request_failed,
+    show_error_state,
+)
 from backend_client import (
     BACKEND_URL,
     authenticated_session,
@@ -203,15 +211,14 @@ def fetch_inventory_id(cookies: dict | None = None) -> str | None:
         )
 
         if response.status_code == 401:
-            return None
+            raise SessionExpired()
 
         response.raise_for_status()
 
         return response.json().get("inventory_id")
 
-    except requests.RequestException as error:
-        print("Error fetching inventory ID:", error)
-        return None
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your inventory", error)) from error
 
 
 
@@ -220,12 +227,15 @@ def fetch_inventory_items(
     cookies: dict | None = None,
     archived: bool = False,
 ) -> list[dict]:
+    """Raise instead of returning [], so a failed load never looks like an empty inventory."""
     try:
         response = authenticated_session(cookies).get(
             f"{BACKEND_URL.rstrip('/')}/api/inventory/{inventory_id}/",
             params={"archived": "true"} if archived else None,
             timeout=10,
         )
+        if response.status_code == 401:
+            raise SessionExpired()
         response.raise_for_status()
         data = response.json()
 
@@ -260,8 +270,7 @@ def fetch_inventory_items(
         return normalized_items
 
     except (requests.RequestException, ValueError, TypeError) as error:
-        print(f"[INVENTORY] Failed to fetch items: {error}")
-        return []
+        raise PageLoadError(request_failed("your items", error)) from error
 
 
 
@@ -279,8 +288,8 @@ def fetch_inventory_categories(
 
         return response.json().get("categories", [])
 
-    except requests.RequestException as error:
-        print("Error fetching categories:", error)
+    # Categories only feed the filter; without them it offers "All Categories".
+    except requests.RequestException:
         return []
 
 def fetch_inventory_locations(inventory_id: str, cookies: dict) -> list[dict] | None:
@@ -315,21 +324,24 @@ async def inventory_page(category: str = ""):
 
     await ui.context.client.connected()
     cookies = dict(app.storage.user.get("auth_cookies", {}))
-    inventory_id = await run.io_bound(fetch_inventory_id, cookies)
 
-    if not inventory_id:
-        loading.delete()
-        ui.label(
-            "Could not load your inventory. "
-            "Please sign in or check your backend connection."
-        ).classes("text-red-600 p-6")
+    try:
+        inventory_id = await run.io_bound(fetch_inventory_id, cookies)
+        if not inventory_id:
+            raise PageLoadError(load_failed("your inventory"))
+        items, categories, locations = await asyncio.gather(
+            run.io_bound(fetch_inventory_items, inventory_id, cookies),
+            run.io_bound(fetch_inventory_categories, inventory_id, cookies),
+            run.io_bound(fetch_inventory_locations, inventory_id, cookies),
+        )
+    except SessionExpired:
+        end_session()
         return
-
-    items, categories, locations = await asyncio.gather(
-        run.io_bound(fetch_inventory_items, inventory_id, cookies),
-        run.io_bound(fetch_inventory_categories, inventory_id, cookies),
-        run.io_bound(fetch_inventory_locations, inventory_id, cookies),
-    )
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("inventory-container page-content-frame p-7"):
+            show_error_state(str(error), title="Inventory unavailable")
+        return
     loading.delete()
 
     state = {
@@ -339,9 +351,17 @@ async def inventory_page(category: str = ""):
     }
 
     def reload_inventory():
-        state["items"] = fetch_inventory_items(
-            inventory_id, archived=state["archived"]
-        )
+        # Keep showing the current list if the refresh fails.
+        try:
+            state["items"] = fetch_inventory_items(
+                inventory_id, archived=state["archived"]
+            )
+        except SessionExpired:
+            end_session()
+            return
+        except PageLoadError as error:
+            ui.notify(str(error), type="negative")
+            return
         state["categories"] = fetch_inventory_categories(inventory_id)
         location_controls.refresh_options()
         inventory_rows.refresh()
@@ -361,7 +381,10 @@ async def inventory_page(category: str = ""):
             response = await run.io_bound(send)
             data = response.json() if response.content else {}
         except (requests.RequestException, ValueError) as error:
-            ui.notify(f"Connection error: {error}", type="negative")
+            ui.notify(request_failed("this item", error), type="negative")
+            return
+        if response.status_code == 401:
+            end_session()
             return
 
         if response.ok and data.get("success", True):
@@ -380,9 +403,16 @@ async def inventory_page(category: str = ""):
             if state["archived"]
             else "View and manage all of your items"
         )
-        state["items"] = await run.io_bound(
-            fetch_inventory_items, inventory_id, cookies, state["archived"]
-        )
+        try:
+            state["items"] = await run.io_bound(
+                fetch_inventory_items, inventory_id, cookies, state["archived"]
+            )
+        except SessionExpired:
+            end_session()
+            return
+        except PageLoadError as error:
+            ui.notify(str(error), type="negative")
+            return
         location_controls.refresh_options()
         status_filter.set_options(
             ["All Statuses", *sorted({i["status"] for i in state["items"] if i.get("status")})],
@@ -414,7 +444,10 @@ async def inventory_page(category: str = ""):
             response = await run.io_bound(send_delete)
             data = response.json() if response.content else {}
 
-            if response.ok and data.get("success", True):
+            if response.status_code == 401:
+                delete_dialog.close()
+                end_session()
+            elif response.ok and data.get("success", True):
                 ui.notify(
                     f"Item '{item_name}' deleted successfully.",
                     type="positive",
@@ -428,7 +461,7 @@ async def inventory_page(category: str = ""):
                 )
 
         except (requests.RequestException, ValueError) as error:
-            ui.notify(f"Connection error: {error}", type="negative")
+            ui.notify(request_failed("this item", error), type="negative")
 
     def open_delete_dialog(item_public_id: str, item_name: str):
         selected_item["public_id"] = item_public_id
@@ -568,11 +601,18 @@ async def inventory_page(category: str = ""):
                 })
 
                 async def refresh_location_items():
-                    state["items"] = await run.io_bound(
-                        fetch_inventory_items, inventory_id,
-                        dict(app.storage.user.get("auth_cookies", {})),
-                        archived=state["archived"],
-                    )
+                    try:
+                        state["items"] = await run.io_bound(
+                            fetch_inventory_items, inventory_id,
+                            dict(app.storage.user.get("auth_cookies", {})),
+                            archived=state["archived"],
+                        )
+                    except SessionExpired:
+                        end_session()
+                        return
+                    except PageLoadError as error:
+                        ui.notify(str(error), type="negative")
+                        return
                     location_controls.refresh_options()
                     inventory_rows.refresh()
 
@@ -782,6 +822,43 @@ async def inventory_page(category: str = ""):
                                 ),
                             ).props("flat round color=primary")
 
+                def clear_filters():
+                    search_input.value = ""
+                    category_filter.value = "All Categories"
+                    location_filter.value = "all"
+                    status_filter.value = "All Statuses"
+
+                # Tell an empty inventory apart from filters that hide everything.
+                empty_action = {}
+                if state["items"]:
+                    empty_icon = "search_off"
+                    if search_text:
+                        empty_title = f'No results for "{search_input.value.strip()}"'
+                        empty_description = "Check the spelling or try a different search."
+                    else:
+                        empty_title = "No items match these filters"
+                        empty_description = "Try a different category, location, or status."
+                    empty_action = {
+                        "empty_action_label": "Clear filters",
+                        "empty_action_icon": "filter_alt_off",
+                        "on_empty_action": clear_filters,
+                    }
+                elif state["archived"]:
+                    empty_icon = "archive"
+                    empty_title = "No archived items"
+                    empty_description = "Items you archive will appear here."
+                else:
+                    empty_icon = "inventory_2"
+                    empty_title = "No items yet"
+                    empty_description = "Add your first item to start tracking what you own."
+                    empty_action = {
+                        "empty_action_label": "Add Item",
+                        "empty_action_icon": "add",
+                        "on_empty_action": lambda: ui.navigate.to(
+                            f"/add-item/{inventory_id}?return_to=%2Finventory"
+                        ),
+                    }
+
                 render_data_table(
                     filtered_items,
                     view_mode=view_mode,
@@ -796,9 +873,10 @@ async def inventory_page(category: str = ""):
                     row_class="inventory-grid inventory-row",
                     render_header=render_inventory_header,
                     render_row=render_inventory_row,
-                    empty_icon="search_off",
-                    empty_title="No items found",
-                    empty_description="Try changing your search or filters.",
+                    empty_icon=empty_icon,
+                    empty_title=empty_title,
+                    empty_description=empty_description,
+                    **empty_action,
                     render_footer=render_inventory_footer,
                 )
 

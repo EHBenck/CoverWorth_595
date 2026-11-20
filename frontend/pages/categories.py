@@ -12,6 +12,16 @@ from backend_client import (
 )
 from utilities.constants import CATEGORY_VISUALS, DEFAULT_VISUAL
 from utilities.nav_wrapper import build_app_shell
+from utilities.page_states import (
+    BACKEND_UNAVAILABLE,
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    load_failed,
+    request_failed,
+    show_empty_state,
+    show_error_state,
+)
 
 
 # CSS
@@ -221,20 +231,21 @@ def fetch_inventory_id(cookies: dict | None = None) -> str | None:
         )
 
         if response.status_code == 401:
-            return None
+            raise SessionExpired()
 
         response.raise_for_status()
 
         return response.json().get("inventory_id")
 
-    except requests.RequestException:
-        return None
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your inventory", error)) from error
 
 
 def fetch_categories(
     inventory_id: str,
     cookies: dict | None = None,
 ) -> list[dict]:
+    """Raise instead of returning [], so a failed load never looks like no categories."""
 
     try:
         response = authenticated_session(cookies).get(
@@ -242,15 +253,17 @@ def fetch_categories(
             timeout=5,
         )
 
+        if response.status_code == 401:
+            raise SessionExpired()
+
         response.raise_for_status()
 
         data = response.json()
 
         return data.get("categories", [])
 
-    except requests.RequestException as error:
-        print("Error loading categories:", error)
-        return []
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your categories", error)) from error
 
 
 # PAGE
@@ -279,23 +292,20 @@ async def categories_page():
 
     await ui.context.client.connected()
     cookies = dict(app.storage.user.get("auth_cookies", {}))
-    inventory_id = await run.io_bound(fetch_inventory_id, cookies)
 
-    if not inventory_id:
-        loading.delete()
-        with ui.column().classes(
-            "page-content-frame " "items-center " "justify-center " "gap-3 p-8"
-        ):
-            ui.icon("inventory_2").classes("text-5xl text-slate-300")
-
-            ui.label("No inventory found").classes("text-xl font-bold")
-
-            ui.label(
-                ("CoverWorth could not find an active inventory for this account.")
-            ).classes("muted")
+    try:
+        inventory_id = await run.io_bound(fetch_inventory_id, cookies)
+        if not inventory_id:
+            raise PageLoadError(load_failed("your inventory"))
+        categories = await run.io_bound(fetch_categories, inventory_id, cookies)
+    except SessionExpired:
+        end_session()
         return
-
-    categories = await run.io_bound(fetch_categories, inventory_id, cookies)
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("categories-container page-content-frame p-7"):
+            show_error_state(str(error), title="Categories unavailable")
+        return
     loading.delete()
 
     state = {"categories": categories}
@@ -304,8 +314,15 @@ async def categories_page():
 
     # API REFRESH
     def reload_categories():
-
-        state["categories"] = fetch_categories(inventory_id)
+        # Keep showing the current categories if the refresh fails.
+        try:
+            state["categories"] = fetch_categories(inventory_id)
+        except SessionExpired:
+            end_session()
+            return
+        except PageLoadError as error:
+            ui.notify(str(error), type="negative")
+            return
 
         category_grid.refresh()
 
@@ -432,7 +449,7 @@ async def categories_page():
                     reload_categories()
 
                 except requests.RequestException:
-                    dialog_error.text = "Could not connect to the backend."
+                    dialog_error.text = BACKEND_UNAVAILABLE
 
             with ui.row().classes("w-full justify-end gap-3"):
                 ui.button(
@@ -549,10 +566,7 @@ async def categories_page():
                         reload_categories()
 
                     except requests.RequestException:
-                        ui.notify(
-                            ("Could not connect " "to the backend."),
-                            type="negative",
-                        )
+                        ui.notify(BACKEND_UNAVAILABLE, type="negative")
 
                 with ui.row().classes("w-full justify-end gap-3"):
                     ui.button(
@@ -657,18 +671,27 @@ async def categories_page():
                     categories.sort(key=lambda item: updated_at_key(item.get("updated_at")), reverse=True)
 
                 if not categories:
-                    with ui.column().classes(
-                        "category-empty " "w-full items-center " "justify-center gap-2"
-                    ):
-                        ui.icon("category").classes("text-6xl " "text-slate-300")
-
-                        ui.label("No categories found").classes(
-                            "text-lg " "font-semibold " "text-slate-600"
-                        )
-
-                        ui.label(
-                            ("Create your first category or change your search.")
-                        ).classes("text-sm muted")
+                    with ui.element("div").classes("category-empty w-full"):
+                        if state["categories"]:
+                            show_empty_state(
+                                "search_off",
+                                f'No results for "{search.value.strip()}"',
+                                "Check the spelling or try a different search.",
+                                action_label="Clear search",
+                                action_icon="filter_alt_off",
+                                on_action=lambda: search.set_value(""),
+                                padding="py-6",
+                            )
+                        else:
+                            show_empty_state(
+                                "category",
+                                "No categories yet",
+                                "Create a category to group related items and see their total value.",
+                                action_label="New Category",
+                                action_icon="add",
+                                on_action=open_create,
+                                padding="py-6",
+                            )
                     return
 
                 with ui.element("div").classes("category-grid"):

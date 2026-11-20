@@ -10,6 +10,7 @@ import requests
 from nicegui import app, run, ui
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+from utilities.page_states import end_session, show_empty_state
 
 
 class LocationApiError(Exception):
@@ -58,10 +59,7 @@ def _location_request(
 
 
 def _sign_in_again() -> None:
-    app.storage.user.pop("auth_cookies", None)
-    app.storage.user.pop("username", None)
-    ui.notify("Your session expired. Please sign in again.", type="warning")
-    ui.navigate.to("/")
+    end_session()
 
 
 class LocationControls:
@@ -112,8 +110,8 @@ class LocationControls:
                 self.manage_button = ui.button(
                     "Manage Locations", icon="place", on_click=self.open_manager,
                 ).props("outline no-caps color=primary").mark("manage-locations")
-            if mode == "item":
-                ui.label("Choose where this item is kept, or leave it unassigned.").classes("text-xs muted")
+            self.hint = ui.label().classes("text-xs muted")
+            self.hint.visible = mode == "item"
             self.error = ui.label().classes("text-sm text-negative").props("role=alert").mark("location-load-error")
             self.retry = ui.button("Retry locations", on_click=self.reload).props("flat no-caps").mark("retry-locations")
             self.retry.visible = False
@@ -217,10 +215,20 @@ class LocationControls:
         self._render_list()
 
     def _render_list(self) -> None:
+        self.hint.text = (
+            "Choose where this item is kept, or leave it unassigned."
+            if self.locations or not self.loaded
+            else "No locations yet. Use Manage Locations to add places like Garage or Office."
+        )
         self.location_list.clear()
         with self.location_list:
             if not self.locations:
-                ui.label("No locations yet. Create one below.").classes("text-sm muted")
+                show_empty_state(
+                    "place",
+                    "No locations yet",
+                    "Create one below to record where your items are kept.",
+                    padding="py-4",
+                )
             for location in sorted(self.locations, key=lambda row: row.get("path", row["name"]).casefold()):
                 location_id = location["public_id"]
                 with ui.row().classes("w-full items-center justify-between gap-3 border rounded-lg p-3").mark(f"location-{location_id}"):

@@ -21,6 +21,7 @@ from nicegui.testing.user_interaction import UserInteraction
 
 from tests.conftest import PASSWORD
 from tests.fake_ebay import EBAY_DOWN
+from utilities.page_states import BACKEND_UNAVAILABLE, VALUATION_UNAVAILABLE
 from tests.ui_helpers import (
     click_button,
     click_icon_button,
@@ -221,21 +222,21 @@ async def test_switching_inventory_changes_what_the_pages_show(user: User, accou
     await user.should_not_see("iPhone 13")
 
     await user.open("/inventory")
-    await user.should_see("No items found", retries=20)
+    await user.should_see("No items yet", retries=20)
 
 
 async def test_empty_inventory_pages(user: User, account) -> None:
     await sign_in(user, account)
 
     await user.open("/inventory")
-    await user.should_see("No items found", retries=20)
+    await user.should_see("No items yet", retries=20)
 
     await user.open("/valuations")
-    await user.should_see("No valuations found", retries=20)
+    await user.should_see("No items to value yet", retries=20)
     await user.should_see("No valuation available")
 
     await user.open("/categories")
-    await user.should_see("No categories found", retries=20)
+    await user.should_see("No categories yet", retries=20)
 
 
 async def test_user_cannot_open_another_users_item(user: User, account, api) -> None:
@@ -258,7 +259,7 @@ async def test_user_cannot_open_another_users_item(user: User, account, api) -> 
     await user.should_see("Item not found", retries=20)
 
     await user.open("/valuations")
-    await user.should_see("No valuations found", retries=20)
+    await user.should_see("No items to value yet", retries=20)
 
 
 # ------------------------------------------------------------
@@ -632,7 +633,7 @@ async def test_ebay_failure_shows_a_useful_error(user: User, account, api) -> No
     await user.should_see(f"iPhone 13 {EBAY_DOWN}", retries=20)
     click_button(user, "Update")
 
-    await user.should_see("Valuation request failed: Unable to retrieve eBay listings", retries=20)
+    await user.should_see(VALUATION_UNAVAILABLE, retries=20)
     await user.should_see("No valuation available")
     assert api.item(item_id).json()["item"]["current_estimated_amount"] is None
 
@@ -664,9 +665,9 @@ async def test_backend_down_during_valuation_does_not_crash(user: User, account,
     monkeypatch.setattr("backend_client.BACKEND_URL", "http://127.0.0.1:9")
 
     click_button(user, "Update")
-    await user.should_see("Could not connect to the backend.", retries=50)
+    await user.should_see(BACKEND_UNAVAILABLE, retries=50)
 
     click_button(user, "Accept $247.00")
-    await user.should_see("Could not save valuation", retries=50)
+    await user.should_see("Could not save the valuation.", retries=50)
     await user.should_see("Valuations")
     assert api.item(item_id).json()["item"]["current_estimated_amount"] is None

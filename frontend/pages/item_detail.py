@@ -7,6 +7,14 @@ from backend_client import (
 )
 from utilities.nav_wrapper import build_app_shell
 from utilities.attachments import attachment_url
+from utilities.page_states import (
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    request_failed,
+    show_error_state,
+    show_item_not_found,
+)
 
 # ITEM DETAILS PAGE
 # ============================================================
@@ -199,7 +207,11 @@ ui.add_css(
 def fetch_item_detail(
     item_id: str,
     cookies: dict,
-) -> dict | None:
+) -> dict:
+    """Return the item, or {} when it doesn't exist for this user.
+
+    A server or connection failure raises, so it is never shown as "not found".
+    """
 
     try:
         response = authenticated_session(cookies).get(
@@ -208,25 +220,23 @@ def fetch_item_detail(
         )
 
         if response.status_code == 401:
-            return None
+            raise SessionExpired()
+
+        # Malformed, missing, archived, and other users' items all answer 4xx.
+        if 400 <= response.status_code < 500:
+            return {}
 
         response.raise_for_status()
 
         data = response.json()
 
-        if not data.get("success"):
-            return {}
-
-        return data
-
     except (
         requests.RequestException,
         ValueError,
     ) as error:
+        raise PageLoadError(request_failed("this item", error)) from error
 
-        print(f"[ITEM DETAIL] Failed to load item: {error}")
-
-        return {}
+    return data if data.get("success") else {}
 
 
 def fetch_item_photo(
@@ -250,8 +260,8 @@ def fetch_item_photo(
                 if url:
                     return url
 
-    except (requests.RequestException, ValueError) as error:
-        print(f"[ITEM DETAIL] Failed to load photo: {error}")
+    except (requests.RequestException, ValueError):
+        pass  # The photo is optional; the page shows a placeholder.
 
     return None
 
@@ -378,58 +388,27 @@ async def item_detail_page(
         )
     )
 
-    data = await run.io_bound(
-        fetch_item_detail,
-        item_id,
-        cookies,
-    )
+    try:
+        data = await run.io_bound(
+            fetch_item_detail,
+            item_id,
+            cookies,
+        )
+    except SessionExpired:
+        end_session()
+        return
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("item-detail-container page-content-frame p-7"):
+            show_error_state(str(error), title="Item unavailable")
+        return
 
     loading.delete()
-
-    # Session expired
-    # --------------------------------------------------------
-    if data is None:
-
-        app.storage.user.pop(
-            "auth_cookies",
-            None,
-        )
-
-        app.storage.user.pop(
-            "username",
-            None,
-        )
-
-        ui.navigate.to("/")
-
-        return
 
     # Item missing
     # --------------------------------------------------------
     if not data:
-
-        with ui.column().classes(
-            "item-detail-container "
-            "page-content-frame "
-            "items-center "
-            "justify-center "
-            "gap-4 p-10"
-        ):
-
-            ui.icon("inventory_2").classes("text-6xl " "text-slate-300")
-
-            ui.label("Item not found").classes("text-2xl font-bold")
-
-            ui.label(
-                ("The item may have been removed " "or you may not have access to it.")
-            ).classes("muted")
-
-            ui.button(
-                "Back to Inventory",
-                icon="arrow_back",
-                on_click=lambda: ui.navigate.to("/inventory"),
-            ).props("unelevated " "color=primary " "no-caps")
-
+        show_item_not_found()
         return
 
     item = data.get(

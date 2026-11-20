@@ -5,7 +5,8 @@ in the server process. Only eBay's HTTP layer is replaced: the real
 search_ebay() parsing and estimate() pipeline still run, against the
 recorded listings in backend/inventory_manager/fixtures/raw.
 
-Items whose name contains EBAY_DOWN make eBay unreachable.
+Items whose name contains EBAY_DOWN make eBay unreachable, and items whose
+name contains EBAY_NO_MATCHES get no listings back (too few to estimate).
 """
 
 from pathlib import Path
@@ -14,6 +15,7 @@ from types import SimpleNamespace
 import requests
 
 EBAY_DOWN = "ebay-down"
+EBAY_NO_MATCHES = "ebay-no-matches"
 
 # Result of estimate() on the fixture for a used item.
 FIXTURE_ESTIMATE = 247.0
@@ -31,7 +33,11 @@ def _search(url, params=None, **kwargs):
     response = requests.Response()
     response.status_code = 200
     response.url = url
-    response._content = FIXTURE.read_bytes()
+    response._content = (
+        b'{"total": 0, "itemSummaries": []}'
+        if EBAY_NO_MATCHES in params["q"]
+        else FIXTURE.read_bytes()
+    )
     return response
 
 

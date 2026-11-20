@@ -4,6 +4,14 @@ from nicegui import app, run, ui
 from utilities.attachments import attachment_url
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
 from utilities.nav_wrapper import build_app_shell
+from utilities.page_states import (
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    request_failed,
+    show_empty_state,
+    show_error_state,
+)
 
 
 # COVERWORTH DASHBOARD
@@ -13,35 +21,28 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # ------------------------------------------------------------------
 
 def load_dashboard_data(cookies):
-    """Fetch dashboard summary using this browser's Django session."""
+    """Fetch dashboard summary using this browser's Django session.
+
+    A failed request raises instead of returning zeros, so an unreachable
+    server is never shown as an empty inventory.
+    """
     try:
         response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/dashboard/",
             timeout=5,
         )
         if response.status_code == 401:
-            return None
+            raise SessionExpired()
         response.raise_for_status()
         data = response.json()
-        return {
-            "summary": data.get("summary", {}),
-            "category_data": data.get("category_data", []),
-            "recent_items": data.get("recent_items", []),
-            "inventory_id": data.get("inventory_id"),
-        }
-    except requests.RequestException as e:
-        print(f"Error loading dashboard: {e}")
-        return {
-            "summary": {
-                "total_items": 0,
-                "estimated_value": 0,
-                "purchase_value": 0,
-                "items_needing_attention": 0,
-            },
-            "category_data": [],
-            "recent_items": [],
-            "inventory_id": None,
-        }
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your dashboard", error)) from error
+    return {
+        "summary": data.get("summary", {}),
+        "category_data": data.get("category_data", []),
+        "recent_items": data.get("recent_items", []),
+        "inventory_id": data.get("inventory_id"),
+    }
 
 
 def show_login_page(error_message=""):
@@ -222,6 +223,15 @@ def value_by_category_card(category_data) -> None:
         with ui.row().classes("w-full items-center mb-2"):
             ui.label("Value by Category").classes("section-title")
 
+        if not category_data:
+            show_empty_state(
+                "donut_large",
+                "No values to chart yet",
+                "Category totals appear here once your items have a value.",
+                padding="py-20",
+            )
+            return
+
         # Main Layout: Chart on the left, Custom Legend on the right
         with ui.row().classes("w-full items-center justify-between gap-4"):
             
@@ -306,7 +316,7 @@ def value_by_category_card(category_data) -> None:
 
 
 
-def recent_items_card(recent_items) -> None:
+def recent_items_card(recent_items, inventory_id=None) -> None:
 
     with ui.card().classes(
         "dashboard-card w-full p-6 h-full"
@@ -327,6 +337,18 @@ def recent_items_card(recent_items) -> None:
             ).props(
                 "flat color=primary no-caps"
             )
+
+        if not recent_items:
+            show_empty_state(
+                "inventory_2",
+                "No items yet",
+                "Add your first item to start tracking what you own.",
+                action_label="Add Item",
+                action_icon="add",
+                on_action=lambda: ui.navigate.to(f"/add-item/{inventory_id}"),
+                padding="py-16",
+            )
+            return
 
         for index, item in enumerate(recent_items):
             with ui.row().classes(
@@ -475,13 +497,15 @@ async def dashboard_page():
         ui.label("Loading dashboard...").classes("muted")
 
     await ui.context.client.connected()
-    api_data = await run.io_bound(load_dashboard_data, cookies)
-
-    if api_data is None:
-        app.storage.user.pop("auth_cookies", None)
-        app.storage.user.pop("username", None)
-        app.storage.user["login_message"] = "Your session expired. Please sign in again."
-        ui.navigate.to("/")
+    try:
+        api_data = await run.io_bound(load_dashboard_data, cookies)
+    except SessionExpired:
+        end_session()
+        return
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("dashboard-container page-content-frame p-7"):
+            show_error_state(str(error), title="Dashboard unavailable")
         return
 
     loading.delete()
@@ -575,10 +599,12 @@ async def dashboard_page():
 
             value_by_category_card(category_data)
 
-            recent_items_card(recent_items)
+            recent_items_card(recent_items, inventory_id)
 
         # ----------------------------------------------------------
         # ATTENTION / REVIEW BANNER
         # ----------------------------------------------------------
 
-        attention_banner(dashboard_data)
+        # "0 items need attention" is noise, so the banner only shows when it matters.
+        if dashboard_data.get("items_needing_attention"):
+            attention_banner(dashboard_data)

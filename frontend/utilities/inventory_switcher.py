@@ -12,6 +12,7 @@ from nicegui import app, run, ui
 from nicegui.element import Element
 
 from backend_client import BACKEND_URL, authenticated_session, csrf_headers
+from utilities.page_states import BACKEND_UNAVAILABLE, request_failed
 
 ui.add_css(
     """
@@ -122,7 +123,7 @@ def show_inventory_switcher(active_page: str) -> None:
         except (requests.RequestException, ValueError) as error:
             loading_label.text = "Inventories unavailable"
             loading_label.classes("text-negative")
-            loading_label.tooltip(str(error))
+            loading_label.tooltip(request_failed("your inventories", error))
             return
 
         loading_label.delete()
@@ -171,7 +172,14 @@ def _render_inventory_switcher(
                 {"inventory_id": new_id},
             )
         except (requests.RequestException, InventoryApiError, ValueError) as error:
-            ui.notify(f"Could not switch inventory: {error}", type="negative")
+            ui.notify(
+                f"Could not switch inventory. {error}"
+                if isinstance(error, InventoryApiError)
+                else BACKEND_UNAVAILABLE
+                if isinstance(error, (requests.ConnectionError, requests.Timeout))
+                else "Could not switch inventory. Please try again.",
+                type="negative",
+            )
             # Restore the visible selection; don't issue a second API call.
             dropdown.value = state["active_id"]
         else:
@@ -212,12 +220,15 @@ def _render_inventory_switcher(
                         "/api/inventories/",
                         {"name": name, "description": description_input.value or ""},
                     )
-                except (
-                    requests.RequestException,
-                    InventoryApiError,
-                    ValueError,
-                ) as error:
-                    ui.notify(f"Could not create inventory: {error}", type="negative")
+                except InventoryApiError as error:
+                    ui.notify(f"Could not create inventory. {error}", type="negative")
+                except (requests.RequestException, ValueError) as error:
+                    ui.notify(
+                        BACKEND_UNAVAILABLE
+                        if isinstance(error, (requests.ConnectionError, requests.Timeout))
+                        else "Could not create inventory. Please try again.",
+                        type="negative",
+                    )
                 else:
                     app.storage.user["auth_cookies"] = new_cookies
                     new_inventory = result.get("inventory", {})

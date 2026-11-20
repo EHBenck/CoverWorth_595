@@ -1,9 +1,18 @@
 import requests
 
-from nicegui import app, ui
+from nicegui import app, run, ui
 
 from backend_client import BACKEND_URL, authenticated_session
 from utilities.nav_wrapper import build_app_shell
+from utilities.page_states import (
+    BACKEND_UNAVAILABLE,
+    PageLoadError,
+    SessionExpired,
+    end_session,
+    request_failed,
+    show_empty_state,
+    show_error_state,
+)
 
 # STYLING
 # ============================================================
@@ -171,7 +180,7 @@ ui.add_css(
 
 # DATA
 # ============================================================
-def load_report_data() -> (
+def load_report_data(cookies: dict) -> (
     tuple[dict, str | None]
 ):  # Load the report summary and inventory ID from the dashboard endpoint.
 
@@ -182,10 +191,8 @@ def load_report_data() -> (
         "items_needing_attention": 0,
     }
 
-    cookies = app.storage.user.get("auth_cookies")
-
     if not cookies:
-        return default_summary, None
+        raise SessionExpired()
 
     try:
         response = authenticated_session(cookies).get(
@@ -194,7 +201,7 @@ def load_report_data() -> (
         )
 
         if response.status_code == 401:
-            return default_summary, None
+            raise SessionExpired()
 
         response.raise_for_status()
 
@@ -202,15 +209,15 @@ def load_report_data() -> (
 
         return data.get("summary", default_summary), data.get("inventory_id")
 
-    except requests.RequestException as error:
-        print(f"Error loading report summary: {error}")
-        return default_summary, None
+    # Zeros would look like an empty inventory, so a failed load raises.
+    except (requests.RequestException, ValueError) as error:
+        raise PageLoadError(request_failed("your report summary", error)) from error
 
 
-def load_report_categories(inventory_id: str) -> dict[str, str] | None:
+def load_report_categories(inventory_id: str, cookies: dict) -> dict[str, str] | None:
 
     try:
-        response = authenticated_session().get(
+        response = authenticated_session(cookies).get(
             f"{BACKEND_URL}/api/inventory/{inventory_id}/categories/",
             timeout=5,
         )
@@ -228,15 +235,14 @@ def load_report_categories(inventory_id: str) -> dict[str, str] | None:
             if category.get("public_id") and category.get("name")
         }
 
-    except (requests.RequestException, ValueError) as error:
-        print(f"Error loading report categories: {error}")
+    except (requests.RequestException, ValueError):
         return None
 
 
 # REPORTS PAGE
 # ============================================================
 @ui.page("/reports")
-def reports_page():
+async def reports_page():
 
     if not app.storage.user.get("auth_cookies"):
         ui.navigate.to("/")
@@ -252,8 +258,33 @@ def reports_page():
         ),
     )
 
-    summary, inventory_id = load_report_data()
-    categories = load_report_categories(inventory_id) if inventory_id else {}
+    with ui.column().classes(
+        "reports-container page-content-frame "
+        "items-center justify-center gap-3 p-8"
+    ) as loading:
+        ui.spinner(size="lg")
+        ui.label("Loading reports...").classes("muted")
+
+    await ui.context.client.connected()
+    cookies = dict(app.storage.user.get("auth_cookies", {}))
+
+    try:
+        summary, inventory_id = await run.io_bound(load_report_data, cookies)
+    except SessionExpired:
+        end_session()
+        return
+    except PageLoadError as error:
+        loading.delete()
+        with ui.column().classes("reports-container page-content-frame p-7"):
+            show_error_state(str(error), title="Reports unavailable")
+        return
+
+    categories = (
+        await run.io_bound(load_report_categories, inventory_id, cookies)
+        if inventory_id
+        else {}
+    )
+    loading.delete()
     category_options = {"": "All Categories"}
     if categories:
         category_options.update(categories)
@@ -276,6 +307,20 @@ def reports_page():
             ui.label("Create a record of your belongings and their value.").classes(
                 "text-base muted"
             )
+
+        # An empty inventory would only produce an empty report.
+        if not summary.get("total_items"):
+            with ui.card().classes("reports-card w-full p-6"):
+                show_empty_state(
+                    "description",
+                    "Nothing to report yet",
+                    "Reports list the items in your current inventory. "
+                    "Add items first, then come back to create a report.",
+                    action_label="Go to Inventory",
+                    action_icon="inventory_2",
+                    on_action=lambda: ui.navigate.to("/inventory"),
+                )
+            return
 
         # MAIN REPORT LAYOUT
         # ====================================================
@@ -625,10 +670,7 @@ def reports_page():
                         # ----------------------------------------------------
                         if response.status_code == 401:
 
-                            ui.notify(
-                                ("Your session has expired. " "Please sign in again."),
-                                type="negative",
-                            )
+                            end_session()
 
                             return
 
@@ -640,12 +682,12 @@ def reports_page():
 
                                 message = response.json().get(
                                     "error",
-                                    "Could not generate report.",
+                                    "Could not generate the report. Please try again.",
                                 )
 
                             except ValueError:
 
-                                message = "Could not generate report."
+                                message = "Could not generate the report. Please try again."
 
                             ui.notify(
                                 message,
@@ -700,13 +742,10 @@ def reports_page():
 
                     except requests.RequestException as error:
 
-                        print(
-                            "Report generation error:",
-                            error,
-                        )
-
                         ui.notify(
-                            ("Could not connect to " "the report service."),
+                            BACKEND_UNAVAILABLE
+                            if isinstance(error, (requests.ConnectionError, requests.Timeout))
+                            else "Could not generate the report. Please try again.",
                             type="negative",
                         )
 

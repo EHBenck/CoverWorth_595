@@ -3,6 +3,8 @@ from typing import TypeVar
 
 from nicegui import ui
 
+from utilities.page_states import show_empty_state
+
 
 T = TypeVar("T")
 
@@ -123,6 +125,9 @@ def render_data_table(
     empty_title: str,
     empty_description: str,
     empty_padding: str = "py-16",
+    empty_action_label: str | None = None,
+    empty_action_icon: str | None = None,
+    on_empty_action: Callable | None = None,
     render_footer: Callable[[], None] | None = None,
 ) -> None:
     with ui.element("div").classes(f"data-table-wrapper {wrapper_class}"):
@@ -138,14 +143,15 @@ def render_data_table(
                 render_header()
 
             if not items:
-                with ui.column().classes(
-                    f"w-full items-center justify-center {empty_padding} gap-2"
-                ):
-                    ui.icon(empty_icon).classes("text-5xl text-slate-300")
-                    ui.label(empty_title).classes(
-                        "text-lg font-semibold text-slate-600"
-                    )
-                    ui.label(empty_description).classes("text-sm muted")
+                show_empty_state(
+                    empty_icon,
+                    empty_title,
+                    empty_description,
+                    action_label=empty_action_label,
+                    action_icon=empty_action_icon,
+                    on_action=on_empty_action,
+                    padding=empty_padding,
+                )
             else:
                 for item in items:
                     with ui.element("div").classes(
