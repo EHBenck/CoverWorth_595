@@ -176,5 +176,21 @@ MAILERS = {
 # Media files (item photos and receipt attachments).
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+s3_bucket = config("COVERWORTH_S3_BUCKET", default="").strip()
+
+if s3_bucket:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": s3_bucket,
+                "region_name": "us-east-2",
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -10,3 +10,4 @@ python-decouple==3.8
 python-dotenv==1.2.3
 reportlab==5.1.0
 requests==2.31.0
+django-storages[s3]==1.14.6
