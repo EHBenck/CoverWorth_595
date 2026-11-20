@@ -125,4 +125,5 @@ If it unexpectedly tries to use Neon, remove `DATABASE_URL` / `DATABASE_URL_UNPO
 from the terminal environment and check `backend/.env` and root `.env` files.
 
 This guide covers local testing, not production readiness. Hosted deployment
-also requires TLS, SMTP, database/storage configuration, and external checks.
+also requires TLS, database/storage configuration, and external checks.
+Configure SMTP if the hosted environment needs email delivery.

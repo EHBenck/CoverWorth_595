@@ -140,11 +140,11 @@ CoverWorth-specific runtime variable names, with blank optional credentials.
 | `NICEGUI_PORT` | NiceGUI | `8080`; frontend port. |
 | `NICEGUI_STORAGE_SECRET` | NiceGUI | Public development fallback. Set a private random value when sharing the server. |
 | `NICEGUI_STORAGE_PATH` | NiceGUI | Framework storage path; tests override it with disposable storage. |
-| `EMAIL_HOST` | Django MAILERS | SMTP hostname; required when `DEBUG=False`. Blank uses console-only email in local development. |
+| `EMAIL_HOST` | Django MAILERS | Optional SMTP hostname. Blank uses console-only email in development and disables email delivery when `DEBUG=False`. |
 | `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL` | Django MAILERS | SMTP connection; defaults 587 / True / False. TLS and SSL are mutually exclusive. |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Django MAILERS | SMTP credentials if required by the selected provider. |
 | `EMAIL_TIMEOUT` | Django MAILERS | SMTP network timeout in seconds (10). |
-| `DEFAULT_FROM_EMAIL` | Django MAILERS | Sending identity; required when `DEBUG=False`. |
+| `DEFAULT_FROM_EMAIL` | Django MAILERS | Sending identity; required when `EMAIL_HOST` is set. |
 | `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | Django | Defaults False in development, True when `DEBUG=False`. |
 | `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SECURE_HSTS_PRELOAD` | Django | HSTS settings; opt in only when all relevant HTTPS routes are confirmed. |
 | `COVERWORTH_TRUST_PROXY_SSL_HEADER` | Django | False by default. Enable only for a trusted TLS proxy that strips incoming spoofed forwarding headers. |
@@ -180,10 +180,14 @@ credential was ever pushed, revoke/rotate it and coordinate history cleanup.
 
 These commands run development servers. Changing `DEBUG` alone does not configure
 a production web server, TLS, static/media serving, or deployment security.
-In production, configure HTTPS at the public ingress, set an authenticated SMTP
-server (`EMAIL_HOST` and `DEFAULT_FROM_EMAIL` are mandatory), use a private
-`SECRET_KEY` and correct `ALLOWED_HOSTS`, and point `BACKEND_URL` to the HTTPS
-backend. Secure redirects/cookies default to True when `DEBUG=False`.
+In production, configure HTTPS at the public ingress and use a private
+`SECRET_KEY` and correct `ALLOWED_HOSTS`. Secure redirects and cookies default
+to True when `DEBUG=False`. If NiceGUI and Django run on the same server and
+Django listens only on loopback, NiceGUI can use a loopback HTTP `BACKEND_URL`.
+In this setup, enforce HTTPS and secure browser cookies at the public proxy,
+and set `SECURE_SSL_REDIRECT=False`, `SESSION_COOKIE_SECURE=False`, and
+`CSRF_COOKIE_SECURE=False` for the private Django listener. To enable email
+delivery, configure an authenticated SMTP server and an approved sender.
 If TLS ends at a reverse proxy, enable `COVERWORTH_TRUST_PROXY_SSL_HEADER` **only**
 when the application is unreachable except through a trusted proxy that
 sanitizes `X-Forwarded-Proto`. HSTS should remain disabled until HTTPS is

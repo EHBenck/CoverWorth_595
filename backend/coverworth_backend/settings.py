@@ -178,20 +178,16 @@ if config("COVERWORTH_TRUST_PROXY_SSL_HEADER", default=False, cast=bool):
 if SECURE_HSTS_SECONDS < 0:
     raise ImproperlyConfigured("SECURE_HSTS_SECONDS must be non-negative.")
 
-# Django 6.1 MAILERS: console output is safe for local demos, but would
-# silently discard real email delivery in production. Fail closed instead.
-# SMTP is configurable without storing credentials in the repository.
+# SMTP is optional. Without it, development prints mail to the console
+# and hosted environments disable delivery.
 _smtp_host = config("EMAIL_HOST", default="").strip()
 _smtp_use_tls = config("EMAIL_USE_TLS", default=True, cast=bool)
 _smtp_use_ssl = config("EMAIL_USE_SSL", default=False, cast=bool)
 if _smtp_use_tls and _smtp_use_ssl:
     raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive.")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="").strip()
-if not DEBUG:
-    if not _smtp_host:
-        raise ImproperlyConfigured("Set EMAIL_HOST to a real SMTP server when DEBUG=False.")
-    if not DEFAULT_FROM_EMAIL:
-        raise ImproperlyConfigured("Set DEFAULT_FROM_EMAIL when DEBUG=False.")
+if _smtp_host and not DEFAULT_FROM_EMAIL:
+    raise ImproperlyConfigured("Set DEFAULT_FROM_EMAIL when EMAIL_HOST is configured.")
 
 if _smtp_host:
     MAILERS = {
@@ -210,7 +206,13 @@ if _smtp_host:
     }
 else:
     MAILERS = {
-        "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
+        "default": {
+            "BACKEND": (
+                "django.core.mail.backends.console.EmailBackend"
+                if DEBUG
+                else "django.core.mail.backends.dummy.EmailBackend"
+            ),
+        },
     }
 
 
