@@ -5,8 +5,6 @@ import requests
 from backend_client import BACKEND_URL, authenticated_session
 from utilities.inventory_switcher import InventoryApiError, _api_error
 
-# TODO: set this to the URL your Inventory page already uses for Django's
-# item_list view (I couldn't see urls.py).
 ITEMS_ENDPOINT = "/api/items/"
 RESULT_LIMIT = 8
 

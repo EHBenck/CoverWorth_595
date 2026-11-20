@@ -6,7 +6,6 @@ from utilities.attachments import attachment_url
 from utilities.inventory_search import SearchSessionExpired, search_items
 from utilities.inventory_switcher import InventoryApiError, show_inventory_switcher
 
-#TODO : Replace user related things with dynamic username from backend
 
 ui.add_css("""
     .sidebar,
