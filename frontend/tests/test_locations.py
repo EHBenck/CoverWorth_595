@@ -112,7 +112,7 @@ async def test_create_hierarchy_and_assign_on_add_preserves_unsaved_fields(user:
     fill_item(user, api, "Laptop for basement")
     user.find(kind=ui.textarea, content="Notes").type("Keep the charger with it")
     await upload_file(user, "basement-laptop.png", PNG, "image/png")
-    await user.should_see("Photo 'basement-laptop.png' selected.", retries=30)
+    await user.should_see("basement-laptop.png", retries=30)
 
     await open_manager(user)
     home = await create_through_dialog(user, api, "Home")

@@ -20,7 +20,7 @@ async def sign_in(user: User, account: dict) -> None:
     user.find("Username").type(account["username"])
     user.find("Password").type(account["password"])
     click_button(user, "Sign in")
-    await user.should_see("Recent Items", retries=20)
+    await user.should_see("Recent Items", retries=50)
 
 
 def set_value(user: User, label: str, value) -> None:

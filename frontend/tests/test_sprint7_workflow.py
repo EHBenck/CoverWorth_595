@@ -4,6 +4,9 @@ These interactions use the real Django API and a disposable test database.
 The complete create/assign/edit/archive workflow is covered in test_locations.
 """
 
+from concurrent.futures import wait
+import asyncio
+
 from nicegui import ui
 from nicegui.testing import User
 
@@ -72,6 +75,11 @@ async def test_location_filter_preserves_uuid_and_archived_state_across_views(
     selector = marked(user, "inventory-location-filter")
     assert selector.value == basement["public_id"]
     assert selector.options[basement["public_id"]] == "Family Home → Basement"
+
+    for _ in range(30):
+        if marked(user, f"item-location-{archived_id}").text == "Family Home → Basement":
+            break
+        await asyncio.sleep(0.1)
     assert marked(user, f"item-location-{archived_id}").text == "Family Home → Basement"
 
     with user:

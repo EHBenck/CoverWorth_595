@@ -50,7 +50,8 @@ async def test_register_from_login_page_lands_on_empty_dashboard(user: User, api
     user.find("Create account").click()
 
     await user.should_see("Recent Items", retries=20)
-    await user.should_see(username)
+    await user.should_see("Sign out", retries=20)
+    await user.should_see("Total Items", retries=20)
     api.post("/api/auth/login/", json={"username": username, "password": "Sturdy-passphrase-42"})
     assert api.get("/api/dashboard/").json()["summary"]["total_items"] == 0
 

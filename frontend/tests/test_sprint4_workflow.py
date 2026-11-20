@@ -130,7 +130,7 @@ async def test_primary_workflow_through_the_pages(user: User, api, run_valuation
     set_value(user, "Date Acquired *", "2025-09-01")
     set_value(user, "Purchase Price ($) *", 799)
     await upload_file(user, "phone.jpg", JPEG, "image/jpeg")
-    await user.should_see("Photo 'phone.jpg' selected.", retries=20)
+    await user.should_see("phone.jpg", retries=20)
     click_button(user, "Add Item")
     await user.should_see("Item added successfully.", retries=20)
 

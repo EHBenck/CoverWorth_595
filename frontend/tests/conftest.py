@@ -43,13 +43,12 @@ pytest_plugins = ["nicegui.testing.user_plugin"]
 PASSWORD = "Sturdy-passphrase-42"
 
 
-def pytest_collection_modifyitems(items):
-    """Register the app after every NiceGUI reset using its supported marker."""
-    from tests import app_under_test
-
+def pytest_collection_modifyitems(config, items):
+    """Register the app after every NiceGUI reset using NiceGUI's marker."""
+    main_file = "tests/app_under_test.py"
     for item in items:
-        if item.get_closest_marker("module_under_test") is None:
-            item.add_marker(pytest.mark.module_under_test(app_under_test))
+        if item.get_closest_marker("nicegui_main_file") is None:
+            item.add_marker(pytest.mark.nicegui_main_file(main_file))
 
 
 @pytest.fixture(scope="session")
@@ -241,3 +240,17 @@ def account(api):
     username = f"user_{uuid.uuid4().hex[:10]}"
     api.register(username)
     return {"username": username, "password": PASSWORD}
+
+
+import traceback
+from nicegui import ui as _ui
+
+_original_to = _ui.navigate.to
+
+def _spy_to(target, *args, **kwargs):
+    if target == "/":
+        print("\n=== REDIRECT TO / ===")
+        traceback.print_stack(limit=6)
+    return _original_to(target, *args, **kwargs)
+
+_ui.navigate.to = _spy_to

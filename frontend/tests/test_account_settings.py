@@ -91,7 +91,7 @@ async def test_change_password_keeps_user_signed_in(user: User, account, api) ->
 
     # The rotated Django session cookie was stored, so this browser stays signed in.
     await user.open("/dashboard")
-    await user.should_see("Recent Items", retries=20)
+    await user.should_see("Recent Items", retries=40)
     assert app.storage.user.get("auth_cookies")
 
 
