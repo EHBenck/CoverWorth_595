@@ -161,6 +161,33 @@ credential was ever pushed, revoke/rotate it and coordinate history cleanup.
 These commands run development servers. Changing `DEBUG` alone does not configure
 a production web server, TLS, static/media serving, or deployment security.
 
+## Shared PostgreSQL on Neon
+
+Neon hosts PostgreSQL. Run Django and NiceGUI on the application host.
+Run `neon deploy` from the repository root to pull the linked branch's
+`DATABASE_URL` and `DATABASE_URL_UNPOOLED` into the root `.env` or
+`.env.local`. Django reads that file after `backend/.env`. For a hosted
+Django process, set both URLs in the host's secret settings. Keep the eBay
+credentials in Django's environment as well. The frontend connects through
+`BACKEND_URL`. Local development uses SQLite when `DATABASE_URL` is unset.
+
+For the initial schema or later migrations, use the direct connection. From
+the repository root with the project virtual environment active in PowerShell:
+
+```powershell
+$env:COVERWORTH_DB_DIRECT = 'True'
+python backend/manage.py migrate --noinput
+Remove-Item Env:COVERWORTH_DB_DIRECT
+```
+
+Start Django without that flag to use the pooled URL. Migrations create or
+update the PostgreSQL schema. Existing SQLite records require a separate
+data transfer.
+
+With the Python dependencies installed and the virtual environment active,
+`npm run build` compiles the Python sources and runs Django's system check.
+On PowerShell systems that block `npm.ps1`, use `npm.cmd run build`.
+
 ## Tests and release checks
 
 Run all required local gates from the repository root:

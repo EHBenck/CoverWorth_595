@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 import os
 from pathlib import Path
+import dj_database_url
 from decouple import config, Csv
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
@@ -19,6 +20,8 @@ from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+neon_env = BASE_DIR.parent / ".env"
+load_dotenv(neon_env if neon_env.is_file() else neon_env.with_name(".env.local"))
 
 
 # Quick-start development settings - unsuitable for production
@@ -99,6 +102,29 @@ DATABASES = {
     }
 }
 
+database_url = os.getenv("DATABASE_URL")
+use_direct_database = config("COVERWORTH_DB_DIRECT", default=False, cast=bool)
+if use_direct_database:
+    database_url = os.getenv("DATABASE_URL_UNPOOLED")
+    if not database_url:
+        raise ImproperlyConfigured("Set DATABASE_URL_UNPOOLED for direct database access.")
+
+if database_url:
+    try:
+        postgres = dj_database_url.parse(database_url)
+    except ValueError:
+        raise ImproperlyConfigured("The PostgreSQL connection URL is invalid.") from None
+    if postgres["ENGINE"] != "django.db.backends.postgresql":
+        raise ImproperlyConfigured("CoverWorth requires a PostgreSQL connection URL.")
+    if use_direct_database and "-pooler" in postgres.get("HOST", ""):
+        raise ImproperlyConfigured("DATABASE_URL_UNPOOLED must use a direct PostgreSQL endpoint.")
+    postgres_options = postgres.setdefault("OPTIONS", {})
+    postgres_options.setdefault("sslmode", "require")
+    postgres_options.setdefault("connect_timeout", 5)
+    # Neon pools transactions, so cursors must not persist between transactions.
+    postgres["DISABLE_SERVER_SIDE_CURSORS"] = True
+    DATABASES["default"] = postgres
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
@@ -150,5 +176,21 @@ MAILERS = {
 # Media files (item photos and receipt attachments).
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+s3_bucket = config("COVERWORTH_S3_BUCKET", default="").strip()
+
+if s3_bucket:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": s3_bucket,
+                "region_name": "us-east-2",
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

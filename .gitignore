@@ -36,3 +36,6 @@ backend/inventory_manager/ground_truth/ground_truth_before_medians_backup.csv
 
 # Local database backups (also covered by *.sqlite3)
 backend/db.backup-before-migration.sqlite3
+.neon
+AGENTS.md
+CLAUDE.md

@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "python -m compileall -q backend/coverworth_backend backend/inventory_manager backend/myapp frontend/pages frontend/utilities frontend/main.py frontend/backend_client.py && python backend/manage.py check"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.4",
+    "@neon/env": "^2.1.7"
+  }
+}
