@@ -1,9 +1,11 @@
 # Runtime dependencies imported by the Django application and valuation pipeline.
 # Keep this file UTF-8. Install frontend/requirements.txt for the complete app.
 Django==6.1.1
+dj-database-url==3.1.2
 django-cors-headers==4.9.0
 djangorestframework==3.18.1
 pandas==3.0.5
+psycopg[binary]==3.3.9
 python-decouple==3.8
 python-dotenv==1.2.3
 reportlab==5.1.0
