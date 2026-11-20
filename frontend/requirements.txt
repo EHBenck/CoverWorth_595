@@ -1,5 +1,5 @@
 # One shared runtime for Django, NiceGUI, and the integration tests.
 -r ../backend/requirements.txt
-nicegui==2.24.2
+nicegui==3.18.0
 pytest==7.4.0
 pytest-asyncio==0.23.8
