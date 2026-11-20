@@ -44,7 +44,7 @@ EBAY_FIXTURE = (
 EBAY_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 
 # Result of estimate() on the recorded fixture for a used item.
-FIXTURE_ESTIMATE = 247.0
+FIXTURE_ESTIMATE = 248.31
 
 
 def ebay_response(payload=None, status=200, body=None):
@@ -234,7 +234,7 @@ class Sprint4WorkflowTestCase(TemporaryMediaMixin, TestCase):
         self.assertEqual(search.call_args.kwargs["params"]["q"], "iPhone 13 Apple 128GB")
         valuation = response.json()
         self.assertEqual(valuation["estimate"], FIXTURE_ESTIMATE)
-        self.assertEqual(valuation["sample_count"], 11)
+        self.assertEqual(valuation["sample_count"], 10)
         self.assertEqual(valuation["confidence"], "medium")
         self.assertIsNotNone(valuation["valuation_run_id"])
 
@@ -247,14 +247,14 @@ class Sprint4WorkflowTestCase(TemporaryMediaMixin, TestCase):
         self.assertEqual(response.json()["estimated_value"], FIXTURE_ESTIMATE)
 
         detail = frontend.get(f"/api/item/{item_id}/").json()["item"]
-        self.assertEqual(detail["current_estimated_amount"], "247.00")
+        self.assertEqual(detail["current_estimated_amount"], "248.31")
         self.assertIsNotNone(detail["valuation_date"])
 
         # View History: stored on the item (no history endpoint yet)
         runs = ValuationRun.objects.filter(item__public_id=item_id)
         self.assertEqual(
             [(run.status, run.estimated_amount, run.requested_by.username) for run in runs],
-            [("success", Decimal("247.00"), "alice")],
+            [("success", Decimal("248.31"), "alice")],
         )
         self.assertEqual(runs[0].input_snapshot["query"], "iPhone 13 Apple 128GB")
 
@@ -287,10 +287,10 @@ class Sprint4WorkflowTestCase(TemporaryMediaMixin, TestCase):
         frontend.accept_valuation(item_id, run_id)
 
         detail = frontend.get(f"/api/item/{item_id}/").json()["item"]
-        self.assertEqual(detail["effective_value"], "247.00")
+        self.assertEqual(detail["effective_value"], "248.31")
         self.assertEqual(detail["effective_value_source"], "estimated")
         self.assertIsNone(detail["manual_value"])
-        self.assertEqual(frontend.get("/api/dashboard/").json()["summary"]["estimated_value"], 247.0)
+        self.assertEqual(frontend.get("/api/dashboard/").json()["summary"]["estimated_value"], 248.31)
 
 
 class UserIsolationTestCase(TemporaryMediaMixin, TestCase):

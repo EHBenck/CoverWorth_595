@@ -163,14 +163,55 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
+# HTTPS and cookie protection. Keep local HTTP development functional, while
+# deploying with DEBUG=False enables HTTPS and secure cookies by default.
+# Behind a TLS-terminating proxy, only trust X-Forwarded-Proto when your proxy
+# strips/overwrites untrusted incoming headers and direct app access is blocked.
+SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=not DEBUG, cast=bool)
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=not DEBUG, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=not DEBUG, cast=bool)
+SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
+SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+if config("COVERWORTH_TRUST_PROXY_SSL_HEADER", default=False, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if SECURE_HSTS_SECONDS < 0:
+    raise ImproperlyConfigured("SECURE_HSTS_SECONDS must be non-negative.")
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+# Django 6.1 MAILERS: console output is safe for local demos, but would
+# silently discard real email delivery in production. Fail closed instead.
+# SMTP is configurable without storing credentials in the repository.
+_smtp_host = config("EMAIL_HOST", default="").strip()
+_smtp_use_tls = config("EMAIL_USE_TLS", default=True, cast=bool)
+_smtp_use_ssl = config("EMAIL_USE_SSL", default=False, cast=bool)
+if _smtp_use_tls and _smtp_use_ssl:
+    raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive.")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="").strip()
+if not DEBUG:
+    if not _smtp_host:
+        raise ImproperlyConfigured("Set EMAIL_HOST to a real SMTP server when DEBUG=False.")
+    if not DEFAULT_FROM_EMAIL:
+        raise ImproperlyConfigured("Set DEFAULT_FROM_EMAIL when DEBUG=False.")
+
+if _smtp_host:
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": _smtp_host,
+                "port": config("EMAIL_PORT", default=587, cast=int),
+                "username": config("EMAIL_HOST_USER", default=""),
+                "password": config("EMAIL_HOST_PASSWORD", default=""),
+                "use_tls": _smtp_use_tls,
+                "use_ssl": _smtp_use_ssl,
+                "timeout": config("EMAIL_TIMEOUT", default=10, cast=int),
+            },
+        },
+    }
+else:
+    MAILERS = {
+        "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
+    }
 
 
 # Media files (item photos and receipt attachments).

@@ -11,7 +11,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from myapp.models import Item, ValuationRun
-from myapp.test_sprint4_integration import Sprint4Client, fake_ebay, phone_item
+from myapp.test_sprint4_integration import FIXTURE_ESTIMATE, Sprint4Client, fake_ebay, phone_item
 
 
 class ValuationValueWorkflowTestCase(TestCase):
@@ -111,7 +111,7 @@ class ValuationValueWorkflowTestCase(TestCase):
         with fake_ebay():
             response = self.frontend.run_valuation(self.item_id)
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["estimate"], 247.0)
+        self.assertEqual(response.json()["estimate"], FIXTURE_ESTIMATE)
         self.assertTrue(response.json()["valuation_run_id"])
         self.item.refresh_from_db()
         self.assertEqual((self.item.manual_value, self.item.current_estimated_amount,
