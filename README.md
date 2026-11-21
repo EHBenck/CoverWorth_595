@@ -4,6 +4,15 @@ CoverWorth is a personal belongings inventory application. The Django backend
 stores users, inventories, items, attachments, and saved values in SQLite. The
 NiceGUI frontend provides the browser interface.
 
+## Use the hosted demo
+
+1. Open [CoverWorth](https://13.58.238.170/).
+2. Click **Register**, fill out the form, and click **Create account**. If you already have an account, sign in.
+3. Open **Inventory** to start adding items.
+
+If the link doesn’t open, copy `https://13.58.238.170/` into your browser.
+
+
 ## Current features
 
 - Register, sign in/out, and update account details and password.
