@@ -6,14 +6,12 @@ reported as such instead of looking like missing data.
 """
 
 import uuid
-
 import pytest
 from nicegui import app, ui
 from nicegui.testing import User
-
 from tests.fake_ebay import EBAY_NO_MATCHES
 from tests.ui_helpers import click_button, sign_in
-from utilities.page_states import NOT_ENOUGH_COMPARABLES, SESSION_EXPIRED
+from utilities.page_states import SESSION_EXPIRED
 
 
 def type_in_search(user: User, placeholder: str, text: str) -> None:
@@ -95,7 +93,10 @@ async def test_insufficient_comparables_are_explained(user: User, account, api) 
     await user.should_see(f"Widget {EBAY_NO_MATCHES}", retries=20)
     click_button(user, "Update")
 
-    await user.should_see(NOT_ENOUGH_COMPARABLES, retries=20)
+    await user.should_see(
+        "Found 0 matching used listings. At least 3 are needed for an estimate.",
+        retries=20,
+    )
     await user.should_see("No valuation available")
     assert api.item(item_id).json()["item"]["current_estimated_amount"] is None
 
