@@ -513,7 +513,7 @@ async def valuations_page():
                 type="positive",
             )
         else:
-            ui.notify(NOT_ENOUGH_COMPARABLES, type="warning")
+            ui.notify(result.get("message") or NOT_ENOUGH_COMPARABLES, type="warning")
 
         live_valuation["result"] = result
         live_valuation["photo_url"] = item.get("primary_photo_url") or None
@@ -1309,7 +1309,7 @@ async def valuations_page():
                             if not result:
                                 callout = "Choose Update on an item to fetch an estimate from eBay."
                             elif preview["estimate"] is None:
-                                callout = NOT_ENOUGH_COMPARABLES
+                                callout = result.get("message") or NOT_ENOUGH_COMPARABLES
                             else:
                                 callout = (
                                     f'Estimate based on {preview["sample_count"]} '

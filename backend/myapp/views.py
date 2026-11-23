@@ -1916,7 +1916,14 @@ def item_valuation_api(request, item_id):
     )
     try: 
         rows = search_ebay(query)
-        result = estimate(rows, query, want_condition=condition)
+        result = estimate(
+            rows,
+            query,
+            want_condition=condition,
+            item_name=item.name,
+            brand=item.brand,
+            model_number=item.model_number,
+        )
     # ValueError / KeyError: eBay answered, but not with the listing JSON we expect.
     except (requests.exceptions.RequestException, RuntimeError, ValueError, KeyError):
         return JsonResponse({"error": "Unable to retrieve eBay listings"}, status=502,)
@@ -1990,6 +1997,7 @@ def item_valuation_api(request, item_id):
             if valuation_run is not None
             else None
         ),
+        "message": result.get("message"),
     })
 
 @require_GET

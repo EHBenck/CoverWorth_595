@@ -7,20 +7,23 @@ from .schemas import Listing
 from .conditions import CONDITION_MAP 
 from .ebay_client import load
 from .review_candidates import RULES, classify_configuration, classify_listing
+from .comparables import has_specific_identity, select_name_matches
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "raw"
 GROUND_TRUTH = Path(__file__).parents[1] / "ground_truth" / "ground_truth.csv"
 EXCLUDE = ("case", "cover", "charger", "for parts", "box only", "screen protector")
+MIN_COMPARABLES = 3
 
-
-def estimate(rows, query, want_condition="used", *, configuration=None):
+def estimate(rows, query, want_condition="used", *, configuration=None, item_name=None, brand="", model_number="",):
     normalized_query = " ".join(query.lower().split())
+    normalized_item_name = " ".join((item_name or query).lower().split())
     catalog_item = next(
-        (name for name in RULES if name.lower() == normalized_query),
+        (name for name in RULES if name.lower() == normalized_item_name),
         None,
     )
     condition_matches = [row for row in rows if row.condition == want_condition]
     kept = []
+    needs_item_details = False
 
     if "iphone 13" in normalized_query:
         kept = [
@@ -52,6 +55,15 @@ def estimate(rows, query, want_condition="used", *, configuration=None):
                 continue
 
             kept.append(row)
+    elif catalog_item is None and want_condition == "used":
+        fallback_name = item_name or query
+        needs_item_details = not has_specific_identity(fallback_name, model_number)
+        kept = select_name_matches(
+            condition_matches,
+            fallback_name,
+            brand=brand,
+            model_number=model_number,
+        )
     if len(kept) >= 5:
         prices = pd.Series(float(row.price) for row in kept)
         q1, q3 = prices.quantile([0.25, 0.75])
@@ -60,8 +72,25 @@ def estimate(rows, query, want_condition="used", *, configuration=None):
             row for row in kept
             if q1 - fence <= float(row.price) <= q3 + fence
         ]
-    if len(kept) < 3:
-        return {"query": query, "estimate": None, "n": len(kept), "confidence": "insufficient", "comparables": kept,}
+    if len(kept) < MIN_COMPARABLES:
+        if needs_item_details:
+            message = "Add a brand and model number, or enter a more specific item name."
+        else:
+            count = len(kept)
+            noun = "listing" if count == 1 else "listings"
+            message = (
+                f"Found {count} matching {want_condition} {noun}. "
+                f"At least {MIN_COMPARABLES} are needed for an estimate."
+            )
+
+        return {
+            "query": query,
+            "estimate": None,
+            "n": len(kept),
+            "confidence": "insufficient",
+            "comparables": kept,
+            "message": message,
+        }
     prices = sorted(float(r.price) for r in kept)
     med = median(prices)
     q1, q3 = pd.Series(prices).quantile([0.25, 0.75])
