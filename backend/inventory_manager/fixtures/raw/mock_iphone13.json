@@ -1,49 +1,124 @@
 {
   "itemSummaries": [
     {
-      "title": "Apple iPhone 13 128GB Blue Unlocked",
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
       "price": {
-        "value": "329.99",
+        "value": "220.00",
         "currency": "USD"
       },
-      "buyingOptions": ["FIXED_PRICE"],
-      "conditionId": "3000"
-    },
-    {
-      "title": "Apple iPhone 13 128GB Black",
-      "price": {
-        "value": "299.99",
-        "currency": "USD"
-      },
-      "buyingOptions": ["FIXED_PRICE"],
-      "conditionId": "3000"
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-1"
     },
     {
       "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
       "price": {
-        "value": "319.50",
+        "value": "230.00",
         "currency": "USD"
       },
-      "buyingOptions": ["FIXED_PRICE"],
-      "conditionId": "3000"
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-2"
     },
     {
-      "title": "iPhone 13 Case",
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
       "price": {
-        "value": "15.99",
+        "value": "235.00",
         "currency": "USD"
       },
-      "buyingOptions": ["FIXED_PRICE"],
-      "conditionId": "3000"
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-3"
     },
     {
-      "title": "Apple iPhone 13 For Parts",
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
       "price": {
-        "value": "99.99",
+        "value": "240.00",
         "currency": "USD"
       },
-      "buyingOptions": ["FIXED_PRICE"],
-      "conditionId": "7000"
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-4"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "248.31",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-5"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "248.31",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-6"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "255.00",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-7"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "260.00",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-8"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "270.00",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-9"
+    },
+    {
+      "title": "Apple iPhone 13 128GB Unlocked",
+      "conditionId": "3000",
+      "price": {
+        "value": "280.00",
+        "currency": "USD"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemId": "mock-used-iphone-10"
     }
   ]
 }

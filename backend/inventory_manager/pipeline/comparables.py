@@ -2,9 +2,10 @@ import re
 
 
 ACCESSORY_OR_PART = re.compile(
-    r"\b(?:replacement|compatible with|for parts|parts only|"
-    r"blade only|stand|display case|box only|replica parts|bundle|"
-    r"lot|hose|wand|dust cup|canister|floor nozzle|power head|motor base|motor body|filters?)\b"
+    r"\b(?:replacement|compatible with|for parts|parts only|deluxe parts|"
+    r"blade only|stand only|stand for|monitor stand and base|display case|box only|replica parts|bundle|"
+    r"lot|hose|wand|dust cup|canister|floor nozzle|power head|motor base|"
+    r"motor body|filters?)\b"
 )
 
 
