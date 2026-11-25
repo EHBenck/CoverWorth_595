@@ -1,0 +1,58 @@
+﻿Test Plan for Peer Testing
+
+1. TEAM INFORMATION
+Group 5: CoverWorth 
+Team members: Emmett Henry Benck, Jacob Vukobrat, Kyle Maaske, Simon Potapov, Heather Brothers
+Preferred contact method: Teams or Email
+
+2. SYSTEM OVERVIEW
+CoverWorth helps users inventory belongings, attach photos and receipts,
+review eBay asking-price estimates, and export inventory reports.
+Intended users: Anyone who's interested in managing their personal assets all in one convenient location.
+
+3. ACCESS INSTRUCTIONS
+Repository: https://github.com/EHBenck/CoverWorth_595
+Click on the link below!
+https://13.58.238.170/
+Account access: Select Register to create a test account. If you need a
+demo login, contact the team using the information above.
+
+4. REQUIRED TEST SCENARIOS
+Before adding an item, sign in and create a category if your inventory has
+none. On Add Item, select Manage Categories, then New Category. Create
+a category such as Electronics and select it when adding the test item.
+
+Scenario 1: Register and add an inventory item
+1. Open the hosted app, select Register, and create a test account. Sign in.
+2. Open Inventory and select Add Item. Enter Dell P2422H Monitor as the
+   name, Dell as the brand, P2422H as the model number, Used as the
+   condition, and $75.00 as the purchase price. Complete any other
+   required fields and save.
+3. Refresh the page and reopen the item.
+Expected result: The item is still in the inventory with the same name,
+brand, model number, condition, and purchase price.
+
+Scenario 2: Preview and review a valuation
+1. On the hosted Valuations page, select the Dell monitor from Scenario 1
+   and click Update.
+2. If an estimate appears, check the amount, range, and confidence. Click on "Accept $$.$$."
+   Next, click on the 3 dots next to "Update" for that listing and select "Valuation History." 
+   Open the dropdown to review the comparisons and sources. Open a few listings and check that 
+   they are for used P2422H monitors. Flag any accessory-only listing, such as a monitor stand.
+3. Check that the saved value stays the same while previewing. Select Accept
+   and open Valuation History to confirm the estimate was saved.
+Expected result: The preview explains the estimate using comparable
+listings. Accept saves it in valuation history. Live prices and counts vary.
+If too few listings qualify, record the message and verify that the saved
+value stays the same.
+
+Scenario 3: Upload a photo and verify it stays attached
+1. Open the Dell monitor from Scenario 1 in Inventory.
+2. Edit the item, upload a sample JPG or PNG, and save.
+3. Sign out, sign back in, and reopen the item.
+4. Open the uploaded photo and confirm it’s the one you selected.
+Expected result: The photo remains attached to the Dell monitor after 
+signing back in and opens successfully. Use a sample image without personal information.
+
+
+
