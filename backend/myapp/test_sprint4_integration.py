@@ -39,7 +39,7 @@ User = get_user_model()
 
 EBAY_FIXTURE = (
     Path(__file__).resolve().parents[1]
-    / "inventory_manager" / "fixtures" / "raw" / "ebay_iphone13.json"
+    / "inventory_manager" / "fixtures" / "raw" / "mock_iphone13.json"
 )
 EBAY_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 
@@ -672,7 +672,25 @@ class EbayFailureTestCase(TestCase):
         item.condition = "new"
         item.save()
 
-        with fake_ebay():
+        payload = {
+            "itemSummaries": [
+                {
+                    "title": "Apple iPhone 13 128GB",
+                    "conditionId": condition_id,
+                    "price": {"value": price, "currency": "USD"},
+                    "buyingOptions": ["FIXED_PRICE"],
+                }
+                for condition_id, price in [
+                    ("1000", "209.99"),
+                    ("1000", "229.99"),
+                    ("1000", "249.99"),
+                    ("1500", "99.99"),  # Open box / new other
+                    ("3000", "149.99"),  # Used
+                ]
+            ],
+        }
+
+        with fake_ebay(ebay_response(payload)):
             response = self.frontend.run_valuation(self.item_id)
 
         data = response.json()

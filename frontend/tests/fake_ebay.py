@@ -22,7 +22,7 @@ FIXTURE_ESTIMATE = 248.31
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]
-    / "backend" / "inventory_manager" / "fixtures" / "raw" / "ebay_iphone13.json"
+    / "backend" / "inventory_manager" / "fixtures" / "raw" / "mock_iphone13.json"
 )
 
 
